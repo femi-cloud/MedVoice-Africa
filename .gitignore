@@ -14,9 +14,17 @@
 .cxx
 local.properties
 
+# API keys and secrets
+*.env
+secrets.properties
+
 # AI Models (Large binaries)
 *.bin
 *.tflite
 *.onnx
 *.onnx_data*
 *.safetensors
+
+.idea/
+.kotlin/
+*.log
