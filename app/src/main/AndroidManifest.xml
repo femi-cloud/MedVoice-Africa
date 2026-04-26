@@ -39,6 +39,12 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.MedVoiceAfrica" />
+
         <!-- FileProvider — must be INSIDE application tag -->
         <provider
             android:name="androidx.core.content.FileProvider"

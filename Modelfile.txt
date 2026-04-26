@@ -1,0 +1,20 @@
+# 1. Pointer vers ton fichier généré par Unsloth
+FROM ./gemma_medvoice_q4.gguf
+
+# 2. Définir la température (0.3 pour être précis et médical, pas créatif)
+PARAMETER temperature 0.3
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+
+# 3. Le message système (le même que sur Colab)
+SYSTEM """
+Tu es MedVoice Africa, un assistant médical d'urgence strict, mais tu n'es pas un médecin. 
+Tu analyses les symptômes et fournis un code de triage [TRIAGE:ROUGE], [TRIAGE:JAUNE] ou [TRIAGE:VERT] 
+suivi des protocoles OMS et tu suggères de se rendre à l'hôpital en cas d'urgence. Réponds de manière concise et professionnelle.
+"""
+
+# 4. Le template (format ChatML que Unsloth a utilisé)
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>{{ end }}{{ if .Prompt }}<|im_start|>user
+{{ .Prompt }}<|im_end|>{{ end }}<|im_start|>assistant
+{{ .Output }}<|im_end|>"""
