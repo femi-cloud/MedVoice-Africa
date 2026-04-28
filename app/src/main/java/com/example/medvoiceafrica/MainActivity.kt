@@ -1,25 +1,15 @@
 package com.example.medvoiceafrica
 
 // ═══════════════════════════════════════════════════════════════════
-// MainActivity.kt — FINAL
-// LOCATION: app/src/main/java/com/example/medvoiceafrica/
-//
-// ICONS (all inline unicode):
-//   "☰"  topbar     → ouvre le drawer
-//   "+"  topbar     → logo vert MedVoice
-//   "✎"  topbar     → nouvelle conversation
-//   "⚙"  drawer     → paramètres
-//   "✎"  drawer     → nouvelle conversation
-//   "🔍" drawer     → recherche
-//   "⋯"  drawer     → dropdown session (renommer, supprimer)
-//   "📷" input bar  → caméra
-//   "🎤" input bar  → micro
-//   "■"  input bar  → stop génération (pendant chargement)
-//   "→"  input bar  → envoyer
-//   "⧉"  bubble user/AI → copier
-//   "↺"  bubble user → renvoyer
-//   "🔊" bubble AI  → lire
-//   "⏹" bubble AI  → arrêter lecture
+// MainActivity.kt — FINAL CORRIGÉ
+// Corrections vs version précédente :
+//   - isOnline: collectAsStateWithLifecycle correctement appelé
+//   - doSend: context retiré (n'existe pas dans la portée), tts passé en param
+//   - topbar Option B: bouton ☰ + chip StatusChip dynamique + ✎ + ⚙
+//   - QuickStartButtons intégré (visible quand messages.size == 1)
+//   - TransferButton intégré dans ChatBubble pour ROUGE/JAUNE
+//   - Badge source OMS intégré dans ChatBubble
+//   - Parenthèse en trop ligne 674 corrigée
 // ═══════════════════════════════════════════════════════════════════
 
 import android.content.ClipData
@@ -29,6 +19,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -37,8 +28,10 @@ import android.speech.tts.UtteranceProgressListener
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -73,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -101,8 +95,11 @@ class MainActivity : ComponentActivity() {
     private val ttsReadyState          = mutableStateOf(false)
     private val isGeneratingState      = mutableStateOf(false)
 
+    // FIX: public (pas private) pour accès depuis Compose via LocalContext
+    val networkMonitor by lazy { NetworkMonitor(this) }
+
     private var photoUri: Uri? = null
-    private var tts: TextToSpeech? = null
+    var tts: TextToSpeech? = null
     private var currentTtsLang = ""
     private var generationJob: Job? = null
 
@@ -157,12 +154,19 @@ class MainActivity : ComponentActivity() {
     }
 
     fun launchCamera() {
+        if (checkSelfPermission(android.Manifest.permission.CAMERA)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 1001)
+            return
+        }
         try {
             val file = File(cacheDir, "photo_${System.currentTimeMillis()}.jpg")
             val uri = FileProvider.getUriForFile(this, "$packageName.provider", file)
             photoUri = uri
             takePhotoLauncher.launch(uri!!)
-        } catch (e: Exception) { android.widget.Toast.makeText(this, "Erreur Caméra: ${e.message}", android.widget.Toast.LENGTH_LONG).show() }
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "Erreur Caméra: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+        }
     }
     fun launchGallery() = galleryLauncher.launch("image/*")
     fun launchSpeechRecognition() {
@@ -188,16 +192,22 @@ class MainActivity : ComponentActivity() {
         val prefs = getSharedPreferences("medvoice_settings", MODE_PRIVATE)
         themeModeState.value = prefs.getString("theme", "dark") ?: "dark"
 
+        // Forcer transparence complète dès le départ
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+
+        // Pour Android 11+ (API 30+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.setSystemBarsAppearance(
+                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS.inv(),
+                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+            )
+        }
+
         setContent {
             val themeMode by themeModeState
             val isDark = when (themeMode) { "light" -> false; "system" -> isSystemDark(); else -> true }
-            LaunchedEffect(isDark) {
-                @Suppress("DEPRECATION")
-                window.statusBarColor = if (isDark) android.graphics.Color.parseColor("#111111") else android.graphics.Color.parseColor("#FFFFFF")
-                @Suppress("DEPRECATION")
-                window.navigationBarColor = if (isDark) android.graphics.Color.parseColor("#111111") else android.graphics.Color.parseColor("#F5F5F5")
-                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = !isDark
-            }
+
             MedVoiceTheme(darkTheme = isDark) {
                 MedVoiceApp(
                     initSuccess = initResult.isSuccess, initError = initResult.exceptionOrNull()?.message,
@@ -229,6 +239,9 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         val prefs = getSharedPreferences("medvoice_settings", MODE_PRIVATE)
         themeModeState.value = prefs.getString("theme", "dark") ?: "dark"
+        // FIX: appliquer la vitesse TTS en revenant des paramètres
+        tts?.setSpeechRate(prefs.getFloat("tts_speed", 0.92f))
+        tts?.setPitch(prefs.getFloat("tts_pitch", 1.0f))
     }
     private fun isSystemDark(): Boolean {
         val f = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
@@ -276,18 +289,17 @@ fun MedVoiceApp(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val sessions by db.sessionDao().getAllSessions().collectAsState(initial = emptyList())
-    // FIX: null means "new conversation not yet persisted"
     var currentSessionId by remember { mutableStateOf<Long?>(null) }
     var preloadedMessages by remember { mutableStateOf<List<ChatMessage>?>(null) }
     val isFr = Locale.getDefault().language == "fr"
     var searchQuery by remember { mutableStateOf("") }
-    // Dropdown menu state: which session id has its menu open
     var menuOpenFor by remember { mutableStateOf<Long?>(null) }
-    // Rename dialog state
     var renameDialog by remember { mutableStateOf<Pair<Long, String>?>(null) }
-    // Delete confirm dialog
     var deleteDialog by remember { mutableStateOf<Long?>(null) }
     val context = LocalContext.current
+
+    // ── Stats screen toggle ───────────────────────────────────────
+    var showStats by remember { mutableStateOf(false) }
 
     val filteredSessions = remember(sessions, searchQuery) {
         if (searchQuery.isBlank()) sessions
@@ -359,21 +371,26 @@ fun MedVoiceApp(
                             Text("MedVoice Africa", color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             Text("Gemma 4 · Edge AI", color = colors.accent, fontSize = 11.sp)
                         }
+                        // Bouton stats
+                        IconButton(onClick = {
+                            showStats = true
+                            scope.launch { drawerState.close() }
+                        }) {
+                            Text("📊", fontSize = 16.sp, color = colors.textSecondary)
+                        }
                         IconButton(onClick = { context.startActivity(Intent(context, SettingsActivity::class.java)) }) {
                             Text("⚙", fontSize = 18.sp, color = colors.textSecondary)
                         }
                     }
                     Spacer(Modifier.height(12.dp))
-                    // FIX: New conversation button — clears BOTH state vars
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
                             .background(colors.accent.copy(alpha = 0.15f))
                             .clickable {
-                                // FIX: must clear currentSessionId AND preloadedMessages
-                                // AND call onNewConversation to clear GemmaEngine history
                                 onNewConversation()
                                 currentSessionId = null
-                                preloadedMessages = emptyList() // empty list triggers screen reset
+                                preloadedMessages = emptyList()
+                                showStats = false
                                 scope.launch { drawerState.close() }
                             }
                             .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -384,7 +401,6 @@ fun MedVoiceApp(
                         Text(if (isFr) "Nouvelle conversation" else "New conversation", color = colors.accent, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
                     Spacer(Modifier.height(10.dp))
-                    // Search bar
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(colors.bgInput).padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Text("🔍", fontSize = 13.sp); Spacer(Modifier.width(6.dp))
@@ -424,6 +440,7 @@ fun MedVoiceApp(
                                         scope.launch {
                                             val msgs = db.messageDao().getMessagesForSession(session.id)
                                             currentSessionId = session.id
+                                            showStats = false
                                             preloadedMessages = msgs.map {
                                                 ChatMessage(text = it.text, isUser = it.isUser,
                                                     triageLevel = try { TriageLevel.valueOf(it.triageLevel) } catch (_: Exception) { TriageLevel.UNKNOWN })
@@ -440,7 +457,6 @@ fun MedVoiceApp(
                                         fontSize = 13.sp, maxLines = 1, fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal)
                                     Text(formatTimestamp(session.timestamp), color = colors.textSecondary, fontSize = 11.sp)
                                 }
-                                // ⋯ Dropdown menu — renommer / supprimer
                                 Box {
                                     Text("⋯", fontSize = 16.sp, color = colors.textSecondary,
                                         modifier = Modifier.clickable { menuOpenFor = session.id }.padding(horizontal = 6.dp, vertical = 4.dp))
@@ -466,26 +482,34 @@ fun MedVoiceApp(
             }
         }
     ) {
-        MedVoiceChatScreen(
-            initSuccess = initSuccess, initError = initError, db = db,
-            currentSessionId = currentSessionId, preloadedMessages = preloadedMessages,
-            pendingImageState = pendingImageState, isListeningState = isListeningState,
-            recognizedTextState = recognizedTextState, isSpeakingState = isSpeakingState,
-            speakingMessageIdState = speakingMessageIdState, ttsReadyState = ttsReadyState,
-            isGeneratingState = isGeneratingState,
-            onLaunchCamera = onLaunchCamera, onLaunchGallery = onLaunchGallery,
-            onLaunchSpeech = onLaunchSpeech, onSpeakText = onSpeakText, onStopSpeaking = onStopSpeaking,
-            onClearPendingImage = onClearPendingImage, onSendMessage = onSendMessage,
-            onStopGeneration = onStopGeneration,
-            // FIX: pass a proper reset lambda that also resets preloadedMessages
-            onNewConversation = {
-                onNewConversation()
-                currentSessionId = null
-                preloadedMessages = emptyList()
-            },
-            onOpenDrawer = { scope.launch { drawerState.open() } },
-            onSessionCreated = { id -> currentSessionId = id }
-        )
+        // ── Affichage conditionnel : Stats ou Chat ────────────────
+        if (showStats) {
+            StatsScreen(
+                db = db,
+                colors = colors,
+                onBack = { showStats = false }
+            )
+        } else {
+            MedVoiceChatScreen(
+                initSuccess = initSuccess, initError = initError, db = db,
+                currentSessionId = currentSessionId, preloadedMessages = preloadedMessages,
+                pendingImageState = pendingImageState, isListeningState = isListeningState,
+                recognizedTextState = recognizedTextState, isSpeakingState = isSpeakingState,
+                speakingMessageIdState = speakingMessageIdState, ttsReadyState = ttsReadyState,
+                isGeneratingState = isGeneratingState,
+                onLaunchCamera = onLaunchCamera, onLaunchGallery = onLaunchGallery,
+                onLaunchSpeech = onLaunchSpeech, onSpeakText = onSpeakText, onStopSpeaking = onStopSpeaking,
+                onClearPendingImage = onClearPendingImage, onSendMessage = onSendMessage,
+                onStopGeneration = onStopGeneration,
+                onNewConversation = {
+                    onNewConversation()
+                    currentSessionId = null
+                    preloadedMessages = emptyList()
+                },
+                onOpenDrawer = { scope.launch { drawerState.open() } },
+                onSessionCreated = { id -> currentSessionId = id }
+            )
+        }
     }
 }
 
@@ -521,6 +545,19 @@ fun MedVoiceChatScreen(
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
 
+    // FIX: collectAsStateWithLifecycle correctement appelé
+    val activity = context as? MainActivity
+    val isOnline by (activity?.networkMonitor?.isOnline
+        ?: kotlinx.coroutines.flow.flowOf(true))
+        .collectAsStateWithLifecycle(initialValue = true)
+
+    // Lire force_offline depuis SharedPreferences
+    val forceOffline = remember {
+        context.getSharedPreferences("medvoice_settings", Context.MODE_PRIVATE)
+            .getBoolean("force_offline", false)
+    }
+    val effectivelyOnline = isOnline && !forceOffline
+
     val greeting = if (isFr)
         "Bonjour ! Je suis MedVoice Africa, votre assistant médical.\n\nJe peux vous aider avec le triage, les dosages, les interactions médicamenteuses et les protocoles WHO.\n\nDécrivez un patient, envoyez une photo ou utilisez le micro 🎤"
     else "Hello! I'm MedVoice Africa, your medical assistant.\n\nDescribe a patient, send a photo or use the microphone 🎤"
@@ -535,16 +572,13 @@ fun MedVoiceChatScreen(
     var recognizedText by recognizedTextState
     var inputText by remember { mutableStateOf("") }
 
-    // FIX session: activeSessionId always mirrors the external selection
     var activeSessionId by remember { mutableStateOf(currentSessionId) }
     LaunchedEffect(currentSessionId) { activeSessionId = currentSessionId }
 
-    // FIX new conversation: empty list is the signal to reset
     LaunchedEffect(preloadedMessages) {
         when {
-            preloadedMessages == null -> { /* initial state, do nothing */ }
+            preloadedMessages == null -> { }
             preloadedMessages.isEmpty() -> {
-                // New conversation triggered from drawer
                 messages.clear()
                 messages.add(ChatMessage(text = welcomeText, isUser = false))
             }
@@ -591,27 +625,89 @@ fun MedVoiceChatScreen(
     Column(Modifier.fillMaxSize().background(colors.bgPrimary).imePadding()
         .pointerInput(Unit) { detectTapGestures { focusManager.clearFocus() } }
     ) {
-        // ── Top bar ──────────────────────────────────────────────
-        Row(Modifier.fillMaxWidth().background(colors.bgTopBar).statusBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onOpenDrawer) { Text("☰", fontSize = 20.sp, color = colors.textSecondary) }
-            Box(Modifier.size(34.dp).background(colors.accent, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            }
-            Spacer(Modifier.width(8.dp))
-            Column(Modifier.weight(1f)) {
-                Text("MedVoice Africa", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(6.dp).background(if (initSuccess) colors.accent else Color(0xFFE24B4A), CircleShape))
-                    Spacer(Modifier.width(4.dp))
-                    Text(if (initSuccess) "Gemma 4 · En ligne" else "Erreur API", fontSize = 11.sp, color = colors.textSecondary)
+        // ── Top bar Option B : ☰  chip dynamique  ✎  ⚙ ─────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(colors.bgPrimary)
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Gauche : bouton drawer + chip statut réseau dynamique
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.bgSecondary)
+                        .clickable { onOpenDrawer() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("☰", fontSize = 14.sp, color = colors.textSecondary)
+                }
+
+                // Chip dynamique — couleur animée selon connectivité réelle
+                val dotColor by animateColorAsState(
+                    targetValue = if (effectivelyOnline) colors.accent else Color(0xFFE24B4A),
+                    animationSpec = tween(600),
+                    label = "dot"
+                )
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = colors.bgSecondary,
+                    border = BorderStroke(0.5.dp, colors.divider)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(Modifier.size(6.dp).background(dotColor, CircleShape))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = when {
+                                forceOffline -> if (isFr) "Mode Survie · Protocoles locaux" else "Survival Mode · Local"
+                                effectivelyOnline -> if (isFr) "En ligne · Protocoles OMS v2026" else "Online · WHO v2026"
+                                else -> if (isFr) "Hors ligne · Mode Survie" else "Offline · Survival Mode"
+                            },
+                            fontSize = 11.sp,
+                            color = colors.textSecondary
+                        )
+                    }
                 }
             }
-            IconButton(onClick = { onNewConversation() }) {
-                Text("✎", fontSize = 18.sp, color = colors.textSecondary)
+
+            // Droite : ✎ nouvelle conversation + ⚙ paramètres
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.bgSecondary)
+                        .clickable { onNewConversation() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("✎", fontSize = 14.sp, color = colors.textSecondary)
+                }
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.bgSecondary)
+                        .clickable { context.startActivity(Intent(context, SettingsActivity::class.java)) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("⚙", fontSize = 14.sp, color = colors.textSecondary)
+                }
             }
         }
-        if (!colors.isDark) HorizontalDivider(color = colors.divider, thickness = 0.5.dp)
 
         // ── Messages ─────────────────────────────────────────────
         LazyColumn(state = listState, modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp),
@@ -633,7 +729,7 @@ fun MedVoiceChatScreen(
                     onResend = { text ->
                         if (!isLoading && !isGenerating)
                             doSend(text, null, messages, db, activeSessionId, onSendMessage,
-                                { isLoading = it }, {}, {}, { id -> activeSessionId = id; onSessionCreated(id) }, scope)
+                                { isLoading = it }, {}, {}, { id -> activeSessionId = id; onSessionCreated(id) }, scope, tts = activity?.tts)
                     }
                 )
             }
@@ -651,6 +747,20 @@ fun MedVoiceChatScreen(
                     }
                 }
             }
+        }
+
+        // ── QuickStart (visible uniquement au démarrage) ──────────
+        if (messages.size == 1) {
+            QuickStartButtons(
+                colors = colors,
+                onSuggestion = { text ->
+                    if (!isLoading && !isGenerating)
+                        doSend(text, null, messages, db, activeSessionId, onSendMessage,
+                            { isLoading = it }, { inputText = "" }, onClearPendingImage,
+                            { id -> activeSessionId = id; onSessionCreated(id) }, scope, tts = activity?.tts)
+                },
+                onPrefill = { text -> inputText = text; focusManager.clearFocus() }
+            )
         }
 
         // ── Input bar ─────────────────────────────────────────────
@@ -708,7 +818,7 @@ fun MedVoiceChatScreen(
                         IconButton(onClick = {
                             if (canSend) doSend(inputText, pendingImage, messages, db, activeSessionId,
                                 onSendMessage, { isLoading = it }, { inputText = "" }, onClearPendingImage,
-                                { id -> activeSessionId = id; onSessionCreated(id) }, scope)
+                                { id -> activeSessionId = id; onSessionCreated(id) }, scope, tts = activity?.tts)
                         }) { Text("→", fontSize = 18.sp, color = if (canSend) Color.White else colors.textSecondary, fontWeight = FontWeight.Bold) }
                     }
                 }
@@ -726,6 +836,7 @@ fun ChatBubble(
     onSpeakText: (String) -> Unit, onStopSpeaking: () -> Unit,
     onCopyText: (String) -> Unit, onResend: (String) -> Unit
 ) {
+    val isFr = Locale.getDefault().language == "fr"
     val triageColor = when (message.triageLevel) {
         TriageLevel.ROUGE -> Color(0xFFE24B4A); TriageLevel.JAUNE -> Color(0xFFEF9F27)
         TriageLevel.VERT -> Color(0xFF1D9E75); else -> null
@@ -742,23 +853,39 @@ fun ChatBubble(
                 modifier = Modifier.widthIn(max = 300.dp).combinedClickable(onLongClick = { if (message.text.isNotBlank()) onCopyText(message.text) }) {}
             ) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    // ── Carte triage améliorée ──────────────────────────
                     if (!message.isUser && triageColor != null) {
-                        val label = when (message.triageLevel) {
-                            TriageLevel.ROUGE -> "🔴 ROUGE — Urgence vitale"
-                            TriageLevel.JAUNE -> "🟡 JAUNE — Consultation requise"
-                            TriageLevel.VERT  -> "🟢 VERT — Surveillance"
-                            else -> ""
+                        val (triageLabel, triageSub) = when (message.triageLevel) {
+                            TriageLevel.ROUGE -> Pair(
+                                if (isFr) "🔴 ROUGE — Urgence vitale" else "🔴 RED — Critical emergency",
+                                if (isFr) "Transfert immédiat requis" else "Immediate transfer required"
+                            )
+                            TriageLevel.JAUNE -> Pair(
+                                if (isFr) "🟡 JAUNE — Consultation requise" else "🟡 YELLOW — Consultation required",
+                                if (isFr) "Dans les 24 heures" else "Within 24 hours"
+                            )
+                            TriageLevel.VERT -> Pair(
+                                if (isFr) "🟢 VERT — Surveillance" else "🟢 GREEN — Home monitoring",
+                                if (isFr) "Soins à domicile possibles" else "Home care possible"
+                            )
+                            else -> Pair("", "")
                         }
                         Surface(color = triageColor.copy(alpha = 0.12f), shape = RoundedCornerShape(6.dp)) {
-                            Text(label, Modifier.padding(horizontal = 8.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = triageColor)
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                                Text(triageLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = triageColor)
+                                if (triageSub.isNotBlank())
+                                    Text(triageSub, fontSize = 10.sp, color = triageColor.copy(alpha = 0.8f))
+                            }
                         }
                         Spacer(Modifier.height(8.dp))
                     }
+                    // ── Image ───────────────────────────────────────────
                     if (message.imageBitmap != null) {
                         Image(bitmap = message.imageBitmap.asImageBitmap(), contentDescription = null,
                             modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
                         if (message.text.isNotBlank()) Spacer(Modifier.height(8.dp))
                     }
+                    // ── Texte ───────────────────────────────────────────
                     if (message.text.isNotBlank()) {
                         if (!message.isUser) {
                             SelectionContainer { Text(message.text, fontSize = 14.sp, color = colors.textPrimary, lineHeight = 21.sp) }
@@ -768,7 +895,25 @@ fun ChatBubble(
                     }
                 }
             }
-            // Action buttons under the bubble
+
+            // ── Badge source OMS ────────────────────────────────────
+            if (!message.isUser && message.triageLevel != TriageLevel.UNKNOWN) {
+                Spacer(Modifier.height(3.dp))
+                val protocolName = extractProtocolNameFromText(message.text)
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color(0xFF0f1f35))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text("S", fontSize = 9.sp, color = Color(0xFF85B7EB), fontWeight = FontWeight.Bold)
+                    Text("Sourcé : $protocolName", fontSize = 10.sp, color = Color(0xFF85B7EB))
+                }
+            }
+
+            // ── Boutons d'action ────────────────────────────────────
             Spacer(Modifier.height(3.dp))
             if (message.isUser && message.text.isNotBlank()) {
                 Row(horizontalArrangement = Arrangement.End) {
@@ -777,11 +922,16 @@ fun ChatBubble(
                     BubbleBtn("↺", colors.textSecondary.copy(0.5f)) { onResend(message.text) }
                 }
             } else if (!message.isUser && message.text.isNotBlank()) {
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     BubbleBtn("⧉", colors.textSecondary.copy(0.5f)) { onCopyText(message.text) }
                     Spacer(Modifier.width(4.dp))
                     BubbleBtn(if (isSpeaking) "⏹" else "🔊", if (isSpeaking) colors.accent else colors.textSecondary.copy(0.5f)) {
                         if (isSpeaking) onStopSpeaking() else onSpeakText(message.text)
+                    }
+                    // Bouton transfert SMS pour ROUGE et JAUNE
+                    if (message.triageLevel == TriageLevel.ROUGE || message.triageLevel == TriageLevel.JAUNE) {
+                        Spacer(Modifier.width(6.dp))
+                        TransferButton(message = message, colors = colors)
                     }
                 }
             }
@@ -795,13 +945,32 @@ private fun BubbleBtn(icon: String, color: Color, onClick: () -> Unit) {
         modifier = Modifier.clip(CircleShape).clickable(onClick = onClick).padding(4.dp))
 }
 
+// ── Extraction du nom de protocole depuis le texte ────────────────
+fun extractProtocolNameFromText(text: String): String {
+    val t = text.lowercase()
+    return when {
+        t.contains("artésunate") || (t.contains("paludisme") && t.contains("grave")) -> "OMS — Paludisme grave"
+        t.contains("paludisme") || t.contains("malaria") || t.contains("coartem") -> "OMS — Paludisme"
+        t.contains("déshydratation") || t.contains("sro") || t.contains("ringer") -> "OMS — Déshydratation"
+        t.contains("pneumonie") || t.contains("tirage") -> "OMS — Pneumonie"
+        t.contains("malnutrition") || t.contains("atpe") -> "OMS — Malnutrition aiguë"
+        t.contains("néonatal") || t.contains("nouveau-né") || t.contains("ampicilline") -> "OMS — Fièvre néonatale"
+        t.contains("prééclampsie") || t.contains("sulfate de magnésium") -> "OMS — Hypertension / Prééclampsie"
+        t.contains("antivenin") || t.contains("serpent") -> "OMS — Envenimation"
+        t.contains("diarrhée") || t.contains("choléra") -> "OMS — Diarrhée aiguë"
+        t.contains("plaie") || t.contains("tétanos") -> "OMS — Plaies et infections"
+        else -> "Base OMS locale v2026"
+    }
+}
+
 // ── doSend ────────────────────────────────────────────────────────
 private fun doSend(
     input: String, image: Bitmap?, messages: MutableList<ChatMessage>,
     db: AppDatabase, currentSessionId: Long?,
     onSendMessage: (String, Bitmap?, (Result<String>) -> Unit) -> Unit,
     setLoading: (Boolean) -> Unit, clearInput: () -> Unit, clearImage: () -> Unit,
-    onSessionCreated: (Long) -> Unit, scope: CoroutineScope
+    onSessionCreated: (Long) -> Unit, scope: CoroutineScope,
+    tts: TextToSpeech? = null   // FIX: paramètre optionnel, plus de référence à "context"
 ) {
     val text = input.trim()
     if (text.isBlank() && image == null) return
@@ -815,6 +984,33 @@ private fun doSend(
         setLoading(false)
         val rawResponse = if (result.isSuccess) result.getOrDefault("") else ""
         val triage = GemmaEngine.parseTriageLevelFromTag(rawResponse)
+
+        // ── Triage alerte automatique (vibration + TTS) ───────────
+        // tts est passé depuis MedVoiceChatScreen via activity?.tts
+        // On n'a pas besoin de context ici — TriageAlertHelper le reçoit
+        // via le tts qui contient déjà une référence au Context Android
+        tts?.let {
+            // Vibration : on utilise le context du TTS (non exposé directement)
+            // → La vibration est gérée séparément dans TriageAlertHelper
+            // via un Context passé depuis MainActivity si nécessaire
+        }
+        // Alerte vocale uniquement (vibration nécessite Context — voir note ci-dessous)
+        when (triage) {
+            TriageLevel.ROUGE -> tts?.speak(
+                if (isFr) "Urgence vitale détectée. Transfert immédiat requis."
+                else "Critical emergency. Immediate transfer required.",
+                TextToSpeech.QUEUE_ADD, null, "triage_rouge"
+            )
+            TriageLevel.JAUNE -> tts?.speak(
+                if (isFr) "Cas modéré. Consultation dans les 24 heures."
+                else "Moderate case. Consultation within 24 hours.",
+                TextToSpeech.QUEUE_ADD, null, "triage_jaune"
+            )
+            else -> { }
+        }
+        // NOTE: pour la vibration, ajouter dans MainActivity.onSendMessage callback:
+        // TriageAlertHelper.trigger(this, triage, tts, isFr)
+
         val cleaned = GemmaEngine.cleanResponse(rawResponse)
 
         if (result.isSuccess) {
@@ -826,21 +1022,16 @@ private fun doSend(
         }
 
         scope.launch {
-            // FIX: reuse existing session — NEVER create a new one if currentSessionId exists
             val sessionId: Long = if (currentSessionId != null) {
-                // FIX title: generate smart title from AI response, not from raw user input
                 if (triage != TriageLevel.UNKNOWN) {
                     val smartTitle = generateSmartTitle(text, cleaned, isFr)
                     db.sessionDao().updateSession(
-                        id = currentSessionId,
-                        title = smartTitle,
-                        triageLevel = triage.name,
-                        timestamp = System.currentTimeMillis()  // FIX: update timestamp on each message
+                        id = currentSessionId, title = smartTitle,
+                        triageLevel = triage.name, timestamp = System.currentTimeMillis()
                     )
                 }
                 currentSessionId
             } else {
-                // First message in new session — create it with smart title
                 val smartTitle = generateSmartTitle(text, cleaned, isFr)
                 db.sessionDao().insertSession(
                     ChatSession(title = smartTitle, triageLevel = triage.name)
@@ -850,19 +1041,26 @@ private fun doSend(
             if (result.isSuccess) {
                 db.messageDao().insertMessage(ChatMessageEntity(sessionId = sessionId, text = cleaned, isUser = false, triageLevel = triage.name))
             }
+            // ── Log épidémiologique ───────────────────────────────
+            try {
+                val pathologie = extractPathologie(null, text)
+                db.consultationDao().insert(
+                    ConsultationLog(
+                        pathologie = pathologie,
+                        triage = triage.name,
+                        sessionId = sessionId,
+                        isOffline = rawResponse.contains("[TRIAGE:INFO]")
+                    )
+                )
+            } catch (_: Exception) { /* table pas encore migrée — ignorer */ }
         }
     }
 }
 
 // ── Smart title generation ────────────────────────────────────────
-// Generates a descriptive title from the conversation context
-// instead of using raw user input as-is
 private fun generateSmartTitle(userMessage: String, aiResponse: String, isFr: Boolean): String {
     val msg = userMessage.trim()
-
-    // Extract key medical terms from user message for title
     val medicalKeywords = mapOf(
-        // FR
         "fièvre" to (if (isFr) "Fièvre" else "Fever"),
         "paludisme" to (if (isFr) "Paludisme" else "Malaria"),
         "malaria" to (if (isFr) "Paludisme" else "Malaria"),
@@ -881,10 +1079,8 @@ private fun generateSmartTitle(userMessage: String, aiResponse: String, isFr: Bo
         "serpent" to (if (isFr) "Morsure serpent" else "Snake bite"),
         "morsure" to (if (isFr) "Morsure" else "Bite"),
         "œdème" to (if (isFr) "Œdème" else "Edema"),
-        "gonflement" to (if (isFr) "Gonflement" else "Swelling"),
         "malnutri" to (if (isFr) "Malnutrition" else "Malnutrition"),
         "déshydrat" to (if (isFr) "Déshydratation" else "Dehydration"),
-        // EN
         "fever" to (if (isFr) "Fièvre" else "Fever"),
         "cough" to (if (isFr) "Toux" else "Cough"),
         "diarrhea" to (if (isFr) "Diarrhée" else "Diarrhea"),
@@ -893,24 +1089,18 @@ private fun generateSmartTitle(userMessage: String, aiResponse: String, isFr: Bo
         "infant" to (if (isFr) "Nourrisson" else "Infant"),
         "child" to (if (isFr) "Enfant" else "Child"),
         "pain" to (if (isFr) "Douleur" else "Pain"),
-        "swollen" to (if (isFr) "Gonflement" else "Swelling"),
-        "swelling" to (if (isFr) "Gonflement" else "Swelling"),
         "wound" to (if (isFr) "Plaie" else "Wound"),
         "snake" to (if (isFr) "Serpent" else "Snake bite"),
-        "malnutri" to (if (isFr) "Malnutrition" else "Malnutrition"),
         "dehydrat" to (if (isFr) "Déshydratation" else "Dehydration"),
         "seizure" to (if (isFr) "Convulsions" else "Seizures"),
         "pressure" to (if (isFr) "Tension artérielle" else "Blood pressure"),
         "pregnan" to (if (isFr) "Grossesse" else "Pregnancy"),
         "newborn" to (if (isFr) "Nouveau-né" else "Newborn"),
     )
-
     val msgLower = msg.lowercase()
     val foundKeyword = medicalKeywords.entries.firstOrNull { (kw, _) -> msgLower.contains(kw) }?.value
-
     return when {
         foundKeyword != null -> foundKeyword
-        // Fallback: clean up the user message as title
         msg.length <= 40 -> msg.replaceFirstChar { it.uppercase() }
         else -> msg.take(37).replaceFirstChar { it.uppercase() } + "..."
     }

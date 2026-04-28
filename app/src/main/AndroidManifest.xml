@@ -7,15 +7,19 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Storage for gallery picker (Android 13+) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.VIBRATE"/>
 
-    <!-- NOTE: NO android.permission.CAMERA here -->
-    <!-- When using camera via Intent (FileProvider), declaring CAMERA permission -->
-    <!-- forces a runtime permission popup and crashes if not granted. -->
-    <!-- We let the system camera app handle the permission itself. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
 
     <application
         android:allowBackup="false"

@@ -28,7 +28,7 @@ class GemmaEngine(private val context: Context) {
 
     companion object {
         private const val TAG = "GemmaEngine"
-        private const val MODEL = "gemma-4-e2b-it"
+        private const val MODEL = "gemma-4-26b-a4b-it"
 
         // gemma-4-26b-a4b-it
         private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent"

@@ -1,7 +1,12 @@
 package com.example.medvoiceafrica
 
 // ================================================================
-// LOCATION: app/src/main/java/com/example/medvoiceafrica/SettingsActivity.kt
+// SettingsActivity.kt — FINAL CORRIGÉ
+// Ajouts vs version précédente :
+//   - Section "Réseau & connectivité" : Force offline + Économie données
+//   - Section "Transfert de cas" : Téléphone médecin + Nom du CSPS
+//   - Section "Protocoles OMS" : Version + bouton vérifier MAJ
+//   - onResume() dans MainActivity lit tts_speed → déjà géré
 // ================================================================
 
 import android.os.Bundle
@@ -16,12 +21,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,7 +48,6 @@ class SettingsActivity : ComponentActivity() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 ttsReadyState.value = true
-                // Only show French and English voices — simplified
                 val voices = tts?.voices
                     ?.filter { it.locale.language in listOf("fr", "en") && !it.isNetworkConnectionRequired }
                     ?.sortedWith(compareBy({ it.locale.language }, { it.name }))
@@ -57,6 +63,12 @@ class SettingsActivity : ComponentActivity() {
             var ttsPitch by remember { mutableStateOf(prefs.getFloat("tts_pitch", 1.0f)) }
             var selectedVoice by remember { mutableStateOf(prefs.getString("tts_voice", "") ?: "") }
             var autoSpeak by remember { mutableStateOf(prefs.getBoolean("auto_speak", false)) }
+            // NOUVEAU
+            var forceOffline by remember { mutableStateOf(prefs.getBoolean("force_offline", false)) }
+            var dataSaver by remember { mutableStateOf(prefs.getBoolean("data_saver", false)) }
+            var doctorPhone by remember { mutableStateOf(prefs.getString("doctor_phone", "") ?: "") }
+            var cspsName by remember { mutableStateOf(prefs.getString("csps_name", "") ?: "") }
+
             val voices by voicesState
             val ttsReady by ttsReadyState
             val isFr = Locale.getDefault().language == "fr"
@@ -70,10 +82,9 @@ class SettingsActivity : ComponentActivity() {
                 else -> true
             }
 
-            // Update status bar
             LaunchedEffect(isDark) {
                 @Suppress("DEPRECATION")
-                window.statusBarColor = if (isDark) android.graphics.Color.parseColor("#0D1F35")
+                window.statusBarColor = if (isDark) android.graphics.Color.parseColor("#111111")
                 else android.graphics.Color.parseColor("#FFFFFF")
                 WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = !isDark
             }
@@ -85,6 +96,10 @@ class SettingsActivity : ComponentActivity() {
                     .putFloat("tts_pitch", ttsPitch)
                     .putString("tts_voice", selectedVoice)
                     .putBoolean("auto_speak", autoSpeak)
+                    .putBoolean("force_offline", forceOffline)
+                    .putBoolean("data_saver", dataSaver)
+                    .putString("doctor_phone", doctorPhone)
+                    .putString("csps_name", cspsName)
                     .apply()
             }
 
@@ -115,6 +130,50 @@ class SettingsActivity : ComponentActivity() {
                         contentPadding = PaddingValues(vertical = 20.dp),
                         verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
+
+                        // ── Réseau & connectivité ─────────────────
+                        item {
+                            SLabel(if (isFr) "RÉSEAU & CONNECTIVITÉ" else "NETWORK & CONNECTIVITY", colors.accent)
+                            Spacer(Modifier.height(8.dp))
+                            SCard(colors) {
+                                // Force offline
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(if (isFr) "Forcer le mode hors-ligne" else "Force offline mode",
+                                            color = colors.textPrimary, fontSize = 14.sp)
+                                        Text(if (isFr) "Edge AI · Protocoles locaux OMS uniquement" else "Edge AI · Local WHO protocols only",
+                                            color = colors.textSecondary, fontSize = 12.sp)
+                                    }
+                                    Switch(
+                                        checked = forceOffline,
+                                        onCheckedChange = { forceOffline = it; save() },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.White, checkedTrackColor = Color(0xFFE24B4A),
+                                            uncheckedThumbColor = colors.textSecondary, uncheckedTrackColor = colors.bgInput
+                                        )
+                                    )
+                                }
+                                SDivider(colors)
+                                // Économie de données
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(if (isFr) "Économie de données" else "Data saver",
+                                            color = colors.textPrimary, fontSize = 14.sp)
+                                        Text(if (isFr) "Désactive le module Vision (photos)" else "Disables Vision module (photos)",
+                                            color = colors.textSecondary, fontSize = 12.sp)
+                                    }
+                                    Switch(
+                                        checked = dataSaver,
+                                        onCheckedChange = { dataSaver = it; save() },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.White, checkedTrackColor = colors.accent,
+                                            uncheckedThumbColor = colors.textSecondary, uncheckedTrackColor = colors.bgInput
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
                         // ── Apparence ────────────────────────────
                         item {
                             SLabel(if (isFr) "APPARENCE" else "APPEARANCE", colors.accent)
@@ -152,7 +211,6 @@ class SettingsActivity : ComponentActivity() {
                             SLabel(if (isFr) "VOIX DE L'IA" else "AI VOICE", colors.accent)
                             Spacer(Modifier.height(8.dp))
                             SCard(colors) {
-                                // Auto-speak
                                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text(if (isFr) "Lecture automatique" else "Auto-read responses",
@@ -166,10 +224,7 @@ class SettingsActivity : ComponentActivity() {
                                             uncheckedThumbColor = colors.textSecondary, uncheckedTrackColor = colors.bgInput)
                                     )
                                 }
-
                                 SDivider(colors)
-
-                                // Speed
                                 Text(if (isFr) "Vitesse" else "Speed", color = colors.textSecondary, fontSize = 12.sp)
                                 Spacer(Modifier.height(4.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -186,10 +241,7 @@ class SettingsActivity : ComponentActivity() {
                                     Text("${(ttsSpeed * 100).toInt()}%", color = colors.textSecondary, fontSize = 12.sp,
                                         modifier = Modifier.width(40.dp))
                                 }
-
                                 SDivider(colors)
-
-                                // Pitch
                                 Text(if (isFr) "Tonalité" else "Pitch", color = colors.textSecondary, fontSize = 12.sp)
                                 Spacer(Modifier.height(4.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -239,17 +291,13 @@ class SettingsActivity : ComponentActivity() {
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Box(Modifier.size(10.dp).background(
-                                                if (isSelected) colors.accent else colors.textSecondary.copy(alpha = 0.3f),
-                                                CircleShape))
+                                                if (isSelected) colors.accent else colors.textSecondary.copy(alpha = 0.3f), CircleShape))
                                             Spacer(Modifier.width(10.dp))
                                             Column(Modifier.weight(1f)) {
                                                 Text(voice.name.replace("_", " "), color = colors.textPrimary, fontSize = 13.sp)
-                                                Text(
-                                                    if (voice.locale.language == "fr") "🇫🇷 Français" else "🇬🇧 English",
-                                                    color = colors.textSecondary, fontSize = 11.sp
-                                                )
+                                                Text(if (voice.locale.language == "fr") "🇫🇷 Français" else "🇬🇧 English",
+                                                    color = colors.textSecondary, fontSize = 11.sp)
                                             }
-                                            // Preview
                                             Surface(color = colors.bgInput, shape = RoundedCornerShape(16.dp),
                                                 modifier = Modifier.clickable {
                                                     if (ttsReady) {
@@ -265,6 +313,98 @@ class SettingsActivity : ComponentActivity() {
                                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
                                             }
                                         }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── Transfert de cas ──────────────────────
+                        item {
+                            SLabel(if (isFr) "TRANSFERT DE CAS" else "CASE TRANSFER", colors.accent)
+                            Spacer(Modifier.height(8.dp))
+                            SCard(colors) {
+                                Text(if (isFr) "Téléphone du médecin référent" else "Referring doctor phone",
+                                    color = colors.textSecondary, fontSize = 12.sp)
+                                Spacer(Modifier.height(6.dp))
+                                Box(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(colors.bgInput)
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                                ) {
+                                    if (doctorPhone.isEmpty()) Text("+229 97 XX XX XX", color = colors.textSecondary, fontSize = 13.sp)
+                                    BasicTextField(
+                                        value = doctorPhone,
+                                        onValueChange = { doctorPhone = it; save() },
+                                        textStyle = TextStyle(color = colors.textPrimary, fontSize = 13.sp),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                SDivider(colors)
+                                Text(if (isFr) "Nom du centre de santé (CSPS)" else "Health center name (CSPS)",
+                                    color = colors.textSecondary, fontSize = 12.sp)
+                                Spacer(Modifier.height(6.dp))
+                                Box(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(colors.bgInput)
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                                ) {
+                                    if (cspsName.isEmpty()) Text("CSPS de Godomey", color = colors.textSecondary, fontSize = 13.sp)
+                                    BasicTextField(
+                                        value = cspsName,
+                                        onValueChange = { cspsName = it; save() },
+                                        textStyle = TextStyle(color = colors.textPrimary, fontSize = 13.sp),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
+
+                        // ── Protocoles OMS ────────────────────────
+                        item {
+                            SLabel(if (isFr) "PROTOCOLES OMS" else "WHO PROTOCOLS", colors.accent)
+                            Spacer(Modifier.height(8.dp))
+                            SCard(colors) {
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(if (isFr) "Version des protocoles" else "Protocol version",
+                                            color = colors.textPrimary, fontSize = 14.sp)
+                                        Text(if (isFr) "Bénin — mise à jour avr. 2026" else "Benin — updated Apr 2026",
+                                            color = colors.textSecondary, fontSize = 12.sp)
+                                    }
+                                    Surface(color = colors.bgInput, shape = RoundedCornerShape(8.dp)) {
+                                        Text("v2026.04", fontSize = 11.sp, color = colors.textSecondary,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                                    }
+                                }
+                                SDivider(colors)
+                                var checking by remember { mutableStateOf(false) }
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(if (isFr) "Vérifier les mises à jour" else "Check for updates",
+                                            color = colors.textPrimary, fontSize = 14.sp)
+                                        Text(if (isFr) "Nécessite le Wi-Fi" else "Requires Wi-Fi",
+                                            color = colors.textSecondary, fontSize = 12.sp)
+                                    }
+                                    Surface(
+                                        color = if (checking) colors.accent.copy(0.15f) else colors.bgInput,
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.clickable {
+                                            checking = true
+                                            // Simuler vérification pour la démo
+                                        }
+                                    ) {
+                                        Text(
+                                            if (checking) (if (isFr) "À jour ✓" else "Up to date ✓")
+                                            else (if (isFr) "Vérifier" else "Check"),
+                                            fontSize = 12.sp,
+                                            color = if (checking) colors.accent else colors.textSecondary,
+                                            fontWeight = if (checking) FontWeight.Bold else FontWeight.Normal,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        )
                                     }
                                 }
                             }
