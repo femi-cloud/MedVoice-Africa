@@ -15,10 +15,10 @@ package com.example.medvoiceafrica
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
+
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.net.Uri
+
 import android.os.Build
 import android.os.Bundle
 import android.speech.RecognizerIntent
@@ -67,9 +67,17 @@ import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Environment
+import android.provider.Settings
+import androidx.lifecycle.lifecycleScope
+
 import java.io.File
 import java.util.Locale
 
@@ -182,6 +190,27 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) { isListeningState.value = false }
     }
 
+    private fun lancerLeMoteur() {
+        lifecycleScope.launch {
+            println("Tentative d'allumage de l'IA Locale...")
+
+            // C'est ici qu'on lance la fonction initialize() qu'on vient de corriger
+            val etat = LlamaEngine.initialize(applicationContext)
+
+            when (etat) {
+                is LlamaState.Ready -> {
+                    println("Succès ! Le GGUF est chargé !")
+                    // Ici, tu peux débloquer la barre de texte pour discuter avec Gemma
+                }
+                is LlamaState.Failed -> {
+                    println("Echec: ${etat.reason}. Activation du Mode Survie (Lexique JSON).")
+                    // Ici, tu affiches ton interface jaune "Mode Sécurité Hors-ligne"
+                }
+                else -> {}
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -232,6 +261,20 @@ class MainActivity : ComponentActivity() {
                     onThemeChanged = { newTheme -> themeModeState.value = newTheme; prefs.edit().putString("theme", newTheme).apply() }
                 )
             }
+        }
+
+        // 1. Demande l'autorisation ultime de lire les fichiers (Android 11+)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                intent.data = Uri.parse("package:${packageName}")
+                startActivity(intent)
+                // L'utilisateur devra cocher la case pour ton app, puis revenir en arrière
+            } else {
+                lancerLeMoteur()
+            }
+        } else {
+            lancerLeMoteur() // Pour les vieux Android, la permission du Manifest suffit souvent
         }
     }
 

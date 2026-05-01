@@ -121,8 +121,8 @@ fun StatusChip(
 
     val chipText = when {
         forceOffline -> if (isFr) "Mode Survie · Protocoles locaux" else "Survival Mode · Local protocols"
-        effectivelyOnline -> if (isFr) "En ligne · Protocoles OMS v2026" else "Online · WHO Protocols v2026"
-        else -> if (isFr) "Hors ligne · Mode Survie activé" else "Offline · Survival Mode active"
+        effectivelyOnline -> if (isFr) "En ligne" else "Online"
+        else -> if (isFr) "Hors ligne" else "Offline"
     }
 
     Surface(
