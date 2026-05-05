@@ -5,7 +5,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Platform](https://img.shields.io/badge/Platform-Android%2026+-brightgreen.svg)](https://android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-purple.svg)](https://kotlinlang.org)
-[![Model](https://img.shields.io/badge/LLM-Gemma%204%20%2F%20Gemma%202-orange.svg)](https://ai.google.dev/gemma)
+[![Model](https://img.shields.io/badge/LLM-Gemma%204%-orange.svg)](https://ai.google.dev/gemma)
 [![Status](https://img.shields.io/badge/Status-Hackathon%20Build-yellow.svg)]()
 
 > **An offline-first, multimodal AI medical assistant powered by Gemma 4, built to bridge the deadly gap between symptom onset and professional care in rural Africa.**
