@@ -263,6 +263,7 @@ Please open an issue before submitting a large PR.
 
 ```
 Copyright 2026 MedVoice Africa Contributors
+Licensed under the Apache License, Version 2.0 (the "License")
 
 ```
 
