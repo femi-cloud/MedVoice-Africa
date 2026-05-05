@@ -56,6 +56,9 @@ interface ChatSessionDao {
 
     @Query("UPDATE chat_sessions SET title = :title WHERE id = :id")
     suspend fun renameSession(id: Long, title: String)
+
+    @Query("UPDATE chat_sessions SET triageLevel = :triageLevel, timestamp = :timestamp WHERE id = :id")
+    suspend fun updateTriageOnly(id: Long, triageLevel: String, timestamp: Long)
 }
 
 @Dao

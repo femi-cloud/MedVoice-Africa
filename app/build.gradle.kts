@@ -72,18 +72,25 @@ dependencies {
 
     implementation("org.codeshipping:llama-kotlin-android:0.1.0")
 
+    implementation("com.google.code.gson:gson:2.10.1")
+
     // Room — local database for conversation history
     val roomVersion = "2.7.0-alpha13"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
 
-    // CameraX
-    val cameraxVersion = "1.4.1"
-    implementation("androidx.camera:camera-core:$cameraxVersion")
-    implementation("androidx.camera:camera-camera2:$cameraxVersion")
-    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
-    implementation("androidx.camera:camera-view:$cameraxVersion")
+    // --- CameraX (Le caméraman) ---
+    val camerax_version = "1.3.1"
+    implementation("androidx.camera:camera-camera2:$camerax_version")
+    implementation("androidx.camera:camera-lifecycle:$camerax_version")
+    implementation("androidx.camera:camera-view:$camerax_version")
+
+    // --- Google ML Kit (Les experts en analyse) ---
+    // Pour le scan de codes (QR, Barcode, DataMatrix)
+    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+    // Pour l'OCR (Reconnaissance de texte)
+    implementation("com.google.mlkit:text-recognition:16.0.0")
 
     // FileProvider support
     implementation("androidx.core:core-ktx:1.15.0")

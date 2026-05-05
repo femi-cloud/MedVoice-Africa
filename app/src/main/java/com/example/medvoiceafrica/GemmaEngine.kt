@@ -36,34 +36,51 @@ class GemmaEngine(private val context: Context) {
         fun getDeviceLanguage(): String = when (Locale.getDefault().language) { "fr" -> "fr"; "en" -> "en"; else -> "fr" }
 
         fun buildSystemPrompt(lang: String, isPublicMode: Boolean = true): String {
-            val baseRule = "Tu DOIS inclure un tag de triage ([TRIAGE:ROUGE], [TRIAGE:JAUNE] ou [TRIAGE:VERT]) UNIQUEMENT si l'utilisateur décrit des symptômes ou pose une question médicale. Si l'utilisateur dit bonjour, merci, ou pose une question générale, réponds normalement et poliment sans utiliser de tag de triage."
+            val jsonStructure = """
+    {
+      "drug": "nom_du_medicament",
+      "weight_kg": 0.0,
+      "age_years": 0,
+      "triage": "ROUGE|JAUNE|VERT"
+    }
+    """.trimIndent()
+
+            // ── NOUVELLES RÈGLES DE SÉCURITÉ ──
+            val safetyRules = if (lang == "fr") """
+4. SÉCURITÉ INTERACTIONS : Vérifie systématiquement les traitements en cours mentionnés. 
+   - Si risque (ex: Aspirine + Anticoagulant), passe en [TRIAGE:ROUGE] et alerte sur le danger.
+5. RÈGLE D'OR DU POIDS (Adulte & Enfant) : 
+   - Si l'utilisateur demande une dose mais que le poids (weight_kg) est absent ou inconnu :
+     a) NE GÉNÈRE PAS le bloc JSON [[DATA]].
+     b) Réponds : "Pour vous répondre en toute sécurité, j'ai besoin de connaître le poids de la personne concernée."
+""".trimIndent() else """..."""
+
+            val extractionRules = """
+    - NE CALCULE JAMAIS DE DOSAGE. Extrais juste les données.
+    - Tu DOIS inclure un tag de triage ([TRIAGE:ROUGE|JAUNE|VERT]) au début.
+    - SI ET SEULEMENT SI toutes les données (poids pour enfant, absence d'interaction) sont réunies, termine par le bloc JSON entre [[DATA]] et [[/DATA]] :
+    $jsonStructure
+    """.trimIndent()
 
             return if (isPublicMode) {
-                // Mode Grand Public (Bobologie autorisée, pas de jargon)
                 if (lang == "fr") """
-                Tu es MedVoice Africa, un conseiller de santé bienveillant pour le grand public.
-                RÈGLES STRICTES :
-                1. $baseRule
-                2. Tu es autorisé à suggérer UNIQUEMENT des traitements de base en vente libre (ex: Paracétamol pour la fièvre, SRO pour la diarrhée) sans préciser le dosage exact. 
-                3. Tu ne dois JAMAIS suggérer d'antibiotiques, d'antipaludiques, ou de traitements lourds.
-                4. Conseille TOUJOURS d'aller voir un agent de santé si c'est grave.
-                5. Utilise un langage simple, pas de jargon médical.
-            """.trimIndent()
-                else """
-                You are MedVoice Africa, a caring health advisor for the general public...
-            """.trimIndent()
+            Tu es MedVoice Africa, un conseiller de santé expert et prudent.
+            RÈGLES :
+            1. $extractionRules
+            2. Ton message doit être simple et rassurer l'utilisateur.
+            3. Ne mentionne AUCUN chiffre de dosage dans ton texte.
+            $safetyRules
+        """.trimIndent() else """..."""
             } else {
-                // Mode Professionnel (Agent de santé)
+                // Version Pro
                 if (lang == "fr") """
-                Tu es MedVoice Africa, un assistant médical d'urgence strict pour les professionnels. 
-                RÈGLES STRICTES :
-                1. $baseRule
-                2. Détaille les protocoles de l'OMS de manière clinique et concise.
-                3. Donne les dosages précis des médicaments pour guider l'agent de santé.
-            """.trimIndent()
-                else """
-                You are MedVoice Africa, a strict emergency medical assistant for professionals...
-            """.trimIndent()
+            Tu es MedVoice Africa, assistant pour professionnels.
+            RÈGLES :
+            1. $extractionRules
+            2. Utilise un langage clinique précis.
+            3. Indique que le dosage final est calculé par le système local.
+            $safetyRules
+        """.trimIndent() else """..."""
             }
         }
 
@@ -93,6 +110,61 @@ class GemmaEngine(private val context: Context) {
                 (t.startsWith("*") || t.startsWith("-")) && badPrefixes.any { t.contains(it, ignoreCase = true) }
             }.joinToString("\n").trim()
             return text.trimStart('\n', '\r').trim()
+        }
+
+        // Génère un titre court via Gemini, SANS polluer le chatHistory
+        // Appelée UNE SEULE FOIS à la création d'une session (depuis MainActivity)
+        suspend fun generateTitleOnly(prompt: String): String = withContext(Dispatchers.IO) {
+            val apiKey = BuildConfig.GEMINI_API_KEY
+            if (apiKey.isBlank()) return@withContext ""
+            return@withContext try {
+                val url = URL("$BASE_URL?key=$apiKey")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.connectTimeout = 5_000
+                conn.readTimeout = 10_000
+
+                val body = JSONObject().apply {
+                    put("system_instruction", JSONObject().apply {
+                        put("parts", JSONArray().apply {
+                            put(JSONObject().put("text",
+                                "Tu es un générateur de titres médicaux. Réponds UNIQUEMENT avec un titre de 3 à 5 mots, sans guillemets, sans ponctuation finale, rien d'autre."
+                            ))
+                        })
+                    })
+                    // Appel one-shot : pas de chatHistory, juste le prompt
+                    put("contents", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("role", "user")
+                            put("parts", JSONArray().apply { put(JSONObject().put("text", prompt)) })
+                        })
+                    })
+                    put("generationConfig", JSONObject().apply {
+                        put("maxOutputTokens", 20)   // Titre = 3-5 mots, 20 tokens max
+                        put("temperature", 0.3)       // Moins créatif = plus précis
+                    })
+                }
+                conn.outputStream.use { it.write(body.toString().toByteArray()) }
+
+                if (conn.responseCode != 200) return@withContext ""
+
+                val raw = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
+                val json = JSONObject(raw)
+                json.getJSONArray("candidates")
+                    .getJSONObject(0)
+                    .getJSONObject("content")
+                    .getJSONArray("parts")
+                    .getJSONObject(0)
+                    .getString("text")
+                    .lines().firstOrNull()?.trim()
+                    ?.replace(Regex("[\"'*#\\[\\]]"), "")
+                    ?.take(50)
+                    ?: ""
+            } catch (_: Exception) {
+                "" // MainActivity fera le fallback keywords
+            }
         }
     }
 
@@ -163,12 +235,12 @@ class GemmaEngine(private val context: Context) {
                 chatHistory.removeLastOrNull()
                 // Gemini recommendation: frame as "Safety Mode" not just an error
                 val offlineMsg = if (lang == "fr")
-                    "⚠️ **Mode Sécurité Hors-ligne**\n\nL'assistant IA est inaccessible. D'après vos mots-clés, voici les protocoles d'urgence correspondants issus de notre base de données locale. Lisez attentivement la section correspondant à votre niveau de gravité :\n\n${
+                    "**Mode Sécurité Hors-ligne**\n\nL'assistant IA est inaccessible. D'après vos mots-clés, voici les protocoles d'urgence correspondants issus de notre base de données locale. Lisez attentivement la section correspondant à votre niveau de gravité :\n\n${
                         if (ragContext.isNotBlank()) ragContext
                         else "Décrivez un symptôme précis (ex: fièvre, toux, diarrhée) pour accéder aux protocoles OMS hors-ligne."
                     }"
                 else
-                    "⚠️ **Offline Safety Mode**\n\nAI assistant unreachable. Based on your keywords, here are the emergency protocols from our local database. Read carefully the section matching your severity level:\n\n${
+                    "**Offline Safety Mode**\n\nAI assistant unreachable. Based on your keywords, here are the emergency protocols from our local database. Read carefully the section matching your severity level:\n\n${
                         if (ragContext.isNotBlank()) ragContext
                         else "Describe a specific symptom (e.g. fever, cough, diarrhea) to access offline WHO protocols."
                     }"
@@ -238,9 +310,60 @@ class GemmaEngine(private val context: Context) {
             }
         }
 
+    // ── runInferenceForInteraction ──────────────────
+    // Appel Gemini one-shot pour interactions et dosages (sans polluer chatHistory)
+    suspend fun runInferenceForInteraction(prompt: String, isFr: Boolean): Result<String> =
+        withContext(Dispatchers.IO) {
+            if (apiKey.isBlank()) return@withContext Result.failure(IllegalStateException("No API key"))
+            if (!isOnline()) return@withContext Result.failure(Exception("Offline"))
+            return@withContext try {
+                val url = URL("$BASE_URL?key=$apiKey")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.connectTimeout = 8_000
+                conn.readTimeout = 20_000
+                val sysPrompt = if (isFr)
+                    "Tu es un pharmacologue expert. Reponds UNIQUEMENT en JSON valide, rien d'autre."
+                else
+                    "You are an expert pharmacologist. Reply ONLY in valid JSON, nothing else."
+                val body = org.json.JSONObject().apply {
+                    put("system_instruction", org.json.JSONObject().apply {
+                        put("parts", org.json.JSONArray().apply {
+                            put(org.json.JSONObject().put("text", sysPrompt))
+                        })
+                    })
+                    put("contents", org.json.JSONArray().apply {
+                        put(org.json.JSONObject().apply {
+                            put("role", "user")
+                            put("parts", org.json.JSONArray().apply {
+                                put(org.json.JSONObject().put("text", prompt))
+                            })
+                        })
+                    })
+                    put("generationConfig", org.json.JSONObject().apply {
+                        put("maxOutputTokens", 200)
+                        put("temperature", 0.1) // Tres deterministe pour les donnees medicales
+                    })
+                }
+                conn.outputStream.use { it.write(body.toString().toByteArray()) }
+                if (conn.responseCode != 200) return@withContext Result.failure(Exception("API ${conn.responseCode}"))
+                val raw = java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream)).use { it.readText() }
+                val json = org.json.JSONObject(raw)
+                val text = json.getJSONArray("candidates").getJSONObject(0)
+                    .getJSONObject("content").getJSONArray("parts")
+                    .getJSONObject(0).getString("text")
+                Result.success(text.trim())
+            } catch (e: Exception) {
+                Log.e(TAG, "runInferenceForInteraction error: ${e.message}")
+                Result.failure(e)
+            }
+        }
+
     fun parseTriageLevel(response: String) = parseTriageLevelFromTag(response)
     fun isInitialized() = apiKey.isNotBlank()
     fun close() { apiKey = "" }
 }
 
-enum class TriageLevel { ROUGE, JAUNE, VERT, UNKNOWN }
+enum class TriageLevel { ROUGE, JAUNE, VERT, BLEU, UNKNOWN }

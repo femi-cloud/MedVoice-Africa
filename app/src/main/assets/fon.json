@@ -1,0 +1,72 @@
+[
+  {
+    "id": "urgence_generale",
+    "keywords": ["urgence", "grave", "hôpital", "vite", "mourir", "mort"],
+    "question_fr": "La situation semble très grave.",
+    "conseil_fr": "C'est une urgence grave. Allez à l'hôpital tout de suite.",
+    "conseil_fon": "Ajijimɛ sín nǔ syɛnsyɛn ɖé wɛ nyí enɛ. Mi yi dotooxwe tlolo."
+  },
+  {
+    "id": "fievre_extreme",
+    "keywords": ["fièvre", "chaud", "zozo", "feu", "température"],
+    "question_fr": "Le patient a-t-il une très forte fièvre ?",
+    "conseil_fr": "L'enfant a une fièvre trop forte, il faut le refroidir immédiatement avec un linge humide.",
+    "conseil_fon": "Zozo ɖaxó ɖé ɖo vǐ ɔ́ jí; a ɖo na fa'ɛ."
+  },
+  {
+    "id": "hemorragie",
+    "keywords": ["sang", "saigne", "hǔn", "coupure", "hémorragie"],
+    "question_fr": "Le patient perd-il beaucoup de sang ?",
+    "conseil_fr": "Si elle perd beaucoup de sang, ne l'attendez pas ici. Comprimez la plaie et allez au centre de santé.",
+    "conseil_fon": "Enyi é ɖò hun gègě hɛn bú wɛ hǔn, ma nɔte kpɔ́n ɛ ɖò fí ó."
+  },
+  {
+    "id": "detresse_respiratoire",
+    "keywords": ["respire", "souffle", "étouffe", "poitrine"],
+    "question_fr": "Le patient a-t-il du mal à respirer ?",
+    "conseil_fr": "S'il ne respire plus bien, amenez-le aux urgences sans attendre.",
+    "conseil_fon": "Enyi é sɔ́ ɖò gbigbɔnjɛ wɛ ganji ǎ hǔn, kplá ɛ yì dotóoxwé ajijimɛ tɔn."
+  },
+  {
+    "id": "inconscience",
+    "keywords": ["évanoui", "inconscient", "réveil", "dort", "coma"],
+    "question_fr": "Le patient est-il inconscient ?",
+    "conseil_fr": "Ne donnez rien à boire ou à manger s'il est inconscient. Mettez-le sur le côté.",
+    "conseil_fon": "Enyi é ma ɖò ayi mɛ ǎ ɔ, ma na ɛ sin ɖebǔ ó."
+  },
+  {
+    "id": "convulsions",
+    "keywords": ["crise", "convulsion", "tremble", "secousse"],
+    "question_fr": "Le patient fait-il une crise ou des convulsions ?",
+    "conseil_fr": "S'il fait des crises (convulsions), protégez sa tête pour qu'il ne se blesse pas, mais ne le bloquez pas.",
+    "conseil_fon": "Enyi é ɖó jɛ jɛmɛji (convulsions) ɔ, cyɔn alɔ ta tɔn jí."
+  },
+  {
+    "id": "maladie_foudroyante",
+    "keywords": ["faible", "bouge plus", "mou", "baisse"],
+    "question_fr": "L'état du patient se dégrade-t-il très vite ?",
+    "conseil_fr": "Cette maladie peut être fatale rapidement, trouvez un médecin ou un agent de santé immédiatement.",
+    "conseil_fon": "Azɔn énɛ́ ɔ́ sixú yá wǔ hu mɛ; mi ba alɔdó dotóo tɔn."
+  },
+  {
+    "id": "evacuation",
+    "keywords": ["transport", "aller", "loin", "village"],
+    "question_fr": "Devez-vous évacuer le patient ?",
+    "conseil_fr": "Appelez une ambulance ou trouvez un véhicule pour vous rendre en ville maintenant.",
+    "conseil_fon": "Ylɔ ambulance alǒ ba mɔ̌to dìn."
+  },
+  {
+    "id": "hygiene_plaies_graves",
+    "keywords": ["plaie", "blessure", "ouvert", "sale", "infection"],
+    "question_fr": "Y a-t-il une blessure ouverte ou grave ?",
+    "conseil_fr": "Ne touchez pas les plaies avec des mains sales. Couvrez avec un tissu propre en allant à l'hôpital.",
+    "conseil_fon": "Mi ma ɖ'alɔ akpà lɛ wu kpo alɔ kwijikwiji kpo ó."
+  },
+  {
+    "id": "surveillance_vitale",
+    "keywords": ["coeur", "pouls", "minute", "surveiller"],
+    "question_fr": "Devez-vous surveiller le patient en attendant les secours ?",
+    "conseil_fr": "Surveillez son cœur et sa respiration chaque minute jusqu'à l'arrivée à l'hôpital.",
+    "conseil_fon": "Kpɔ́n ayi tɔn kpo lee é nɔ gbɔjɛ gbɔn é kpo ɖò cɛju ɖokpo ɖokpo mɛ."
+  }
+]
