@@ -35,6 +35,13 @@ data class ChatMessageEntity(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+@Entity(tableName = "medications")
+data class Medication(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val name: String,
+    val dateAdded: Long = System.currentTimeMillis()
+)
+
 // ── DAO sessions ──────────────────────────────────────────────────
 
 @Dao
@@ -70,6 +77,18 @@ interface ChatMessageDao {
     suspend fun insertMessage(message: ChatMessageEntity): Long
 }
 
+@Dao
+interface MedicationDao {
+    @Query("SELECT * FROM medications ORDER BY dateAdded DESC")
+    fun getAllMedications(): Flow<List<Medication>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(medication: Medication)
+
+    @Delete
+    suspend fun delete(medication: Medication)
+}
+
 // ── Database ──────────────────────────────────────────────────────
 
 @Database(
@@ -77,16 +96,18 @@ interface ChatMessageDao {
         ChatSession::class,
         ChatMessageEntity::class,
         OmsProtocol::class,
-        ConsultationLog::class   // NOUVEAU
+        ConsultationLog::class,
+        Medication::class
     ],
-    version = 4,   // bumped 3 → 4
+    version = 5,   // bumped 4 → 5
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun sessionDao(): ChatSessionDao
     abstract fun messageDao(): ChatMessageDao
     abstract fun omsProtocolDao(): OmsProtocolDao
-    abstract fun consultationDao(): ConsultationDao   // NOUVEAU
+    abstract fun consultationDao(): ConsultationDao
+    abstract fun medicationDao(): MedicationDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null

@@ -167,7 +167,8 @@ fun PharmaScanScreen(
                         params = dosageParams,
                         gemmaEngine = gemmaEngine,
                         isOnline = isOnline,
-                        isFr = isFr
+                        isFr = isFr,
+                        currentMeds = currentMedications
                     )
                     dosageResult?.let { result ->
                         if (result.source != DosageSource.INSUFFICIENT_DATA) {

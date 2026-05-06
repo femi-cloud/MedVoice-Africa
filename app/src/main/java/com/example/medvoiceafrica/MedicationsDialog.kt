@@ -87,7 +87,12 @@ fun MedicationsDialog(
                                         .size(16.dp)
                                         .clickable { onRemoveMedication(med) }
                                 )
-                            }
+                            },
+                            // S'assurer que le chip est bien visible sur fond blanc/gris
+                            colors = InputChipDefaults.inputChipColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         )
                     }
                 }

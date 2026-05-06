@@ -115,9 +115,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import androidx.compose.animation.animateContentSize
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -127,6 +130,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
+import com.example.medvoiceafrica.StatsScreen
 
 data class ChatMessage(
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -149,6 +153,7 @@ class MainActivity : ComponentActivity() {
     private val themeModeState         = mutableStateOf("dark")
     private val ttsReadyState          = mutableStateOf(false)
     private val isGeneratingState      = mutableStateOf(false)
+    private val isConsultationModeState = mutableStateOf(false)
 
     // FIX: public (pas private) pour accès depuis Compose via LocalContext
     val networkMonitor by lazy { NetworkMonitor(this) }
@@ -156,6 +161,8 @@ class MainActivity : ComponentActivity() {
     private var photoUri: Uri? = null
     var tts: TextToSpeech? = null
     private var currentTtsLang = ""
+
+    private var speechRecognizer: SpeechRecognizer? = null
     private var generationJob: Job? = null
 
 
@@ -169,9 +176,19 @@ class MainActivity : ComponentActivity() {
                 tts?.setPitch(prefs.getFloat("tts_pitch", 1.0f))
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(u: String?) = runOnUiThread { isSpeakingState.value = true }
-                    override fun onDone(u: String?) = runOnUiThread { isSpeakingState.value = false; speakingMessageIdState.value = null }
+                    override fun onDone(u: String?) = runOnUiThread { 
+                        isSpeakingState.value = false; speakingMessageIdState.value = null 
+                        if (isConsultationModeState.value && (u == "ai_response" || u == "ai_error" || u == "triage_rouge" || u == "triage_jaune")) {
+                            launchSpeechRecognition()
+                        }
+                    }
                     @Deprecated("Deprecated in Java")
-                    override fun onError(u: String?) = runOnUiThread { isSpeakingState.value = false; speakingMessageIdState.value = null }
+                    override fun onError(u: String?) = runOnUiThread { 
+                        isSpeakingState.value = false; speakingMessageIdState.value = null 
+                        if (isConsultationModeState.value && (u == "ai_response" || u == "ai_error" || u == "triage_rouge" || u == "triage_jaune")) {
+                            launchSpeechRecognition()
+                        }
+                    }
                 })
                 runOnUiThread { ttsReadyState.value = true }
             }
@@ -244,7 +261,14 @@ class MainActivity : ComponentActivity() {
     fun launchGallery() = galleryLauncher.launch("image/*")
     fun launchSpeechRecognition() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) { android.widget.Toast.makeText(this, "Reconnaissance vocale non disponible", android.widget.Toast.LENGTH_LONG).show(); return }
-        val lang = Locale.getDefault().language; isListeningState.value = true
+        val lang = Locale.getDefault().language
+        
+        if (isConsultationModeState.value) {
+            startProgrammaticSpeechRecognition(lang)
+            return
+        }
+
+        isListeningState.value = true
         try {
             speechLauncher.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -253,6 +277,54 @@ class MainActivity : ComponentActivity() {
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             })
         } catch (_: Exception) { isListeningState.value = false }
+    }
+
+    private fun startProgrammaticSpeechRecognition(lang: String) {
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 1002)
+            return
+        }
+
+        speechRecognizer?.destroy()
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (lang == "fr") "fr-FR" else "en-US")
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            // Optimal silence detection for hands-free mode
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1000L)
+        }
+
+        speechRecognizer?.setRecognitionListener(object : android.speech.RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) { isListeningState.value = true }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() { isListeningState.value = false }
+            override fun onError(error: Int) { 
+                isListeningState.value = false 
+                if (isConsultationModeState.value && (error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_NO_MATCH)) {
+                    // Hands-free: restart listening if nothing heard
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        if (isConsultationModeState.value) launchSpeechRecognition()
+                    }, 1000)
+                }
+            }
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                isListeningState.value = false
+                if (!matches.isNullOrEmpty() && matches[0].isNotBlank()) {
+                    recognizedTextState.value = matches[0]
+                } else if (isConsultationModeState.value) {
+                    launchSpeechRecognition()
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+
+        speechRecognizer?.startListening(intent)
     }
 
     private fun lancerLeMoteur() {
@@ -285,6 +357,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { gemmaEngine.initRag() }
         val prefs = getSharedPreferences("medvoice_settings", MODE_PRIVATE)
         themeModeState.value = prefs.getString("theme", "dark") ?: "dark"
+        isConsultationModeState.value = prefs.getBoolean("consultation_mode", false)
 
         // Forcer transparence complète dès le départ
         window.statusBarColor = android.graphics.Color.TRANSPARENT
@@ -312,6 +385,7 @@ class MainActivity : ComponentActivity() {
                     recognizedTextState = recognizedTextState, isSpeakingState = isSpeakingState,
                     speakingMessageIdState = speakingMessageIdState, ttsReadyState = ttsReadyState,
                     isGeneratingState = isGeneratingState,
+                    isConsultationModeState = isConsultationModeState,
                     onLaunchCamera = { launchCamera() }, onLaunchGallery = { launchGallery() },
                     onLaunchSpeech = { launchSpeechRecognition() },
                     onSpeakText = { text, id, lang -> speakText(text, id, lang) },
@@ -329,7 +403,10 @@ class MainActivity : ComponentActivity() {
                     tts = tts,
                     onStopGeneration = { generationJob?.cancel(); isGeneratingState.value = false },
                     onNewConversation = { gemmaEngine.clearHistory() },
-                    onThemeChanged = { newTheme -> themeModeState.value = newTheme; prefs.edit().putString("theme", newTheme).apply() }
+                    onConsultationModeChanged = { enabled: Boolean -> 
+                        isConsultationModeState.value = enabled
+                        this@MainActivity.getSharedPreferences("medvoice_settings", Context.MODE_PRIVATE).edit().putBoolean("consultation_mode", enabled).apply()
+                    }
                 )
             }
         }
@@ -361,7 +438,12 @@ class MainActivity : ComponentActivity() {
         val f = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
         return f == android.content.res.Configuration.UI_MODE_NIGHT_YES
     }
-    override fun onDestroy() { super.onDestroy(); tts?.stop(); tts?.shutdown(); gemmaEngine.close() }
+    override fun onDestroy() { 
+        super.onDestroy()
+        tts?.stop(); tts?.shutdown()
+        speechRecognizer?.destroy()
+        gemmaEngine.close() 
+    }
 }
 
 // ── Design tokens ─────────────────────────────────────────────────
@@ -393,14 +475,15 @@ fun MedVoiceApp(
     pendingImageState: MutableState<Bitmap?>, isListeningState: MutableState<Boolean>,
     recognizedTextState: MutableState<String>, isSpeakingState: MutableState<Boolean>,
     speakingMessageIdState: MutableState<String?>, ttsReadyState: MutableState<Boolean>,
-    isGeneratingState: MutableState<Boolean>,
+    isGeneratingState: MutableState<Boolean>, isConsultationModeState: MutableState<Boolean>,
     gemmaEngine: GemmaEngine,
     isOnline: Boolean,
     tts: TextToSpeech?,
     onLaunchCamera: () -> Unit, onLaunchGallery: () -> Unit, onLaunchSpeech: () -> Unit,
     onSpeakText: (String, String, String) -> Unit, onStopSpeaking: () -> Unit,
     onClearPendingImage: () -> Unit, onSendMessage: (String, Bitmap?, (Result<String>) -> Unit) -> Unit,
-    onStopGeneration: () -> Unit, onNewConversation: () -> Unit, onThemeChanged: (String) -> Unit
+    onStopGeneration: () -> Unit, onNewConversation: () -> Unit,
+    onConsultationModeChanged: (Boolean) -> Unit
 ) {
 
     val colors = LocalMedVoiceColors.current
@@ -419,7 +502,8 @@ fun MedVoiceApp(
     // ── Stats screen toggle ───────────────────────────────────────
     var showStats by remember { mutableStateOf(false) }
 
-    val currentMedications = remember { mutableStateListOf<String>() }
+    val medicationEntities by db.medicationDao().getAllMedications().collectAsState(initial = emptyList())
+    val currentMedications = remember(medicationEntities) { medicationEntities.map { it.name } }
 
     val filteredSessions = remember(sessions, searchQuery) {
         if (searchQuery.isBlank()) sessions
@@ -646,18 +730,28 @@ fun MedVoiceApp(
                 onLaunchCamera = onLaunchCamera, onLaunchGallery = onLaunchGallery,
                 onLaunchSpeech = onLaunchSpeech, onSpeakText = onSpeakText, onStopSpeaking = onStopSpeaking,
                 onClearPendingImage = onClearPendingImage, onSendMessage = onSendMessage,
-                onStopGeneration = onStopGeneration,
-                onNewConversation = {
-                    onNewConversation()
-                    currentSessionId = null
-                    preloadedMessages = emptyList()
-                },
-                gemmaEngine = gemmaEngine,
+                    onStopGeneration = onStopGeneration,
+                    onNewConversation = {
+                        onNewConversation()
+                        currentSessionId = null
+                        preloadedMessages = emptyList()
+                    },
+                    isConsultationModeState = isConsultationModeState,
+                    onConsultationModeChanged = { enabled: Boolean -> 
+                        isConsultationModeState.value = enabled
+                        context.getSharedPreferences("medvoice_settings", Context.MODE_PRIVATE).edit().putBoolean("consultation_mode", enabled).apply()
+                    },
+                    gemmaEngine = gemmaEngine,
                 isOnline = isOnline,
                 tts = tts,
                 currentMedications = currentMedications,
-                onAddMedication = { currentMedications.add(it) },
-                onRemoveMedication = { currentMedications.remove(it) },
+                onAddMedication = { name -> scope.launch { db.medicationDao().insert(Medication(name = name)) } },
+                onRemoveMedication = { name ->
+                    scope.launch {
+                        val med = medicationEntities.find { it.name == name }
+                        if (med != null) db.medicationDao().delete(med)
+                    }
+                },
                 onOpenDrawer = { scope.launch { drawerState.open() } },
                 onSessionCreated = { id -> currentSessionId = id }
             )
@@ -684,7 +778,7 @@ fun MedVoiceChatScreen(
     pendingImageState: MutableState<Bitmap?>, isListeningState: MutableState<Boolean>,
     recognizedTextState: MutableState<String>, isSpeakingState: MutableState<Boolean>,
     speakingMessageIdState: MutableState<String?>, ttsReadyState: MutableState<Boolean>,
-    isGeneratingState: MutableState<Boolean>,
+    isGeneratingState: MutableState<Boolean>, isConsultationModeState: MutableState<Boolean>,
     gemmaEngine: GemmaEngine,
     isOnline: Boolean,
     tts: TextToSpeech?,
@@ -695,7 +789,8 @@ fun MedVoiceChatScreen(
     onSpeakText: (String, String, String) -> Unit, onStopSpeaking: () -> Unit,
     onClearPendingImage: () -> Unit, onSendMessage: (String, Bitmap?, (Result<String>) -> Unit) -> Unit,
     onStopGeneration: () -> Unit, onNewConversation: () -> Unit,
-    onOpenDrawer: () -> Unit, onSessionCreated: (Long) -> Unit
+    onOpenDrawer: () -> Unit, onSessionCreated: (Long) -> Unit,
+    onConsultationModeChanged: (Boolean) -> Unit
 ) {
 
     val colors = LocalMedVoiceColors.current
@@ -703,6 +798,24 @@ fun MedVoiceChatScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+
+    val pendingImage by pendingImageState
+    val isListening by isListeningState
+    val isConsultationMode by isConsultationModeState
+    val speakingId by speakingMessageIdState
+    val ttsReady by ttsReadyState
+    val isGenerating by isGeneratingState
+    var recognizedText by recognizedTextState
+    var inputText by remember { mutableStateOf("") }
+    var detectedDrugName by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    // Auto-start listening when Consultation Mode is turned on
+    LaunchedEffect(isConsultationMode) {
+        if (isConsultationMode && !isListening && !isSpeakingState.value && !isGenerating && !isLoading) {
+            onLaunchSpeech()
+        }
+    }
 
     // Lire force_offline depuis SharedPreferences
     val forceOffline = remember {
@@ -718,15 +831,16 @@ fun MedVoiceChatScreen(
 
     var showScanner by remember { mutableStateOf(false) }
     val messages = remember { mutableStateListOf(ChatMessage(text = welcomeText, isUser = false)) }
-    val pendingImage by pendingImageState
-    val isListening by isListeningState
-    val speakingId by speakingMessageIdState
-    val ttsReady by ttsReadyState
-    val isGenerating by isGeneratingState
-    var recognizedText by recognizedTextState
-    var inputText by remember { mutableStateOf("") }
+
     var pendingDosageResult by remember { mutableStateOf<DosageResult?>(null) }
     var lastDosageParams by remember { mutableStateOf<DosageParams?>(null) }
+
+    LaunchedEffect(inputText) {
+        detectedDrugName = if (inputText.length > 3)
+            DosageFunctionCalling.extractDosageParams(inputText)?.medicineName?.takeIf { it.isNotBlank() }
+        else null
+    }
+
 
     var activeSessionId by remember { mutableStateOf(currentSessionId) }
     LaunchedEffect(currentSessionId) { activeSessionId = currentSessionId }
@@ -745,11 +859,27 @@ fun MedVoiceChatScreen(
         }
     }
 
-    LaunchedEffect(recognizedText) { if (recognizedText.isNotBlank()) { inputText = recognizedText; recognizedText = "" } }
+    LaunchedEffect(recognizedText) { 
+        if (recognizedText.isNotBlank()) { 
+            val textToSubmit = recognizedText
+            inputText = textToSubmit
+            recognizedText = "" 
+            if (isConsultationMode) {
+                doSend(textToSubmit, pendingImage, messages, db, activeSessionId,
+                    onSendMessage, { b: Boolean -> isLoading = b }, { inputText = "" }, onClearPendingImage,
+                    { id: Long -> activeSessionId = id; onSessionCreated(id) }, scope, tts = tts, context = context,
+                    onDosageResult = { res: DosageResult -> pendingDosageResult = res },
+                    onDosageParams = { pars: DosageParams -> lastDosageParams = pars },
+                    currentMeds = currentMedications,
+                    isOnline = effectivelyOnline,
+                    isConsultationMode = true,
+                    onRestartListening = { onLaunchSpeech() })
+            }
+        } 
+    }
 
     // État pour contrôler l'affichage du dialogue
     var showMedicationsDialog by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) }
     var showImageSourceDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1) }
@@ -817,45 +947,67 @@ fun MedVoiceChatScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(colors.bgSecondary)
-                        .clickable { onOpenDrawer() },
-                    contentAlignment = Alignment.Center
+                // Gauche : Nom de l'app (complet)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("☰", fontSize = 14.sp, color = colors.textSecondary)
-                }
-
-                // Chip dynamique — couleur animée selon connectivité réelle
-                val dotColor by animateColorAsState(
-                    targetValue = if (effectivelyOnline) colors.accent else Color(0xFFE24B4A),
-                    animationSpec = tween(600),
-                    label = "dot"
-                )
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = colors.bgSecondary,
-                    border = BorderStroke(0.5.dp, colors.divider)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.bgSecondary)
+                            .clickable { onOpenDrawer() },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(Modifier
-                            .size(6.dp)
-                            .background(dotColor, CircleShape))
-                        Spacer(Modifier.width(6.dp))
+                        Text("☰", fontSize = 14.sp, color = colors.textSecondary)
+                    }
+                    Column(modifier = Modifier.padding(end = 4.dp)) {
                         Text(
-                            text = when {
-                                forceOffline -> if (isFr) "Mode Survie · Protocoles locaux" else "Survival Mode · Local"
-                                effectivelyOnline -> if (isFr) "En ligne · Protocoles OMS v2026" else "Online · WHO v2026"
-                                else -> if (isFr) "Hors ligne · Mode Survie" else "Offline · Survival Mode"
-                            },
-                            fontSize = 11.sp,
-                            color = colors.textSecondary
+                            text = "MedVoice",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary,
+                            lineHeight = 14.sp
                         )
+                        Text(
+                            text = "Africa",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.accent,
+                            lineHeight = 10.sp
+                        )
+                    }
+
+                    // Milieu : Chip dynamique
+                    val dotColor by animateColorAsState(
+                        targetValue = if (effectivelyOnline) colors.accent else Color(0xFFE24B4A),
+                        animationSpec = tween(600),
+                        label = "dot"
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = colors.bgSecondary,
+                        border = BorderStroke(0.5.dp, colors.divider)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(Modifier
+                                .size(6.dp)
+                                .background(dotColor, CircleShape))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = when {
+                                    forceOffline -> if (isFr) "Mode Survie · Protocoles" else "Survival · Protocols"
+                                    effectivelyOnline -> if (isFr) "En ligne · OMS v2026" else "Online · WHO v2026"
+                                    else -> if (isFr) "Hors ligne · Survie" else "Offline · Survival"
+                                },
+                                fontSize = 10.sp,
+                                color = colors.textSecondary
+                            )
+                        }
                     }
                 }
             }
@@ -915,7 +1067,12 @@ fun MedVoiceChatScreen(
                             doSend(text, null, messages, db, activeSessionId, onSendMessage,
                                 { isLoading = it }, {}, {}, { id -> activeSessionId = id; onSessionCreated(id) }, scope, tts = tts, context = context,
                                 onDosageResult = { pendingDosageResult = it },
-                                onDosageParams = { lastDosageParams = it })
+                                onDosageParams = { lastDosageParams = it },
+                                currentMeds = currentMedications,
+                                isOnline = effectivelyOnline,
+                                isConsultationMode = isConsultationMode,
+                                onRestartListening = { onLaunchSpeech() })
+
                     },
                     dosageResult = pendingDosageResult,
                     dosageParams = lastDosageParams
@@ -949,7 +1106,12 @@ fun MedVoiceChatScreen(
                             { isLoading = it }, { inputText = "" }, onClearPendingImage,
                             { id -> activeSessionId = id; onSessionCreated(id) }, scope, tts = tts, context = context,
                             onDosageResult = { pendingDosageResult = it },
-                            onDosageParams = { lastDosageParams = it })
+                            onDosageParams = { lastDosageParams = it },
+                            currentMeds = currentMedications,
+                            isOnline = effectivelyOnline,
+                            isConsultationMode = isConsultationMode,
+                            onRestartListening = { onLaunchSpeech() })
+
                 },
                 onPrefill = { text -> inputText = text; focusManager.clearFocus() }
             )
@@ -982,6 +1144,50 @@ fun MedVoiceChatScreen(
                     Text(if (isFr) "Écoute..." else "Listening...", fontSize = 13.sp, color = colors.accent)
                 }
             }
+
+            // AJOUTER CE BLOC entre le bloc isListening et le Row principal :
+            detectedDrugName?.let { drug ->
+                val normalizedDetected = DrugInteractionEngine.normalizeDrugName(drug)
+                val isAlreadyTaking = currentMedications.any { 
+                    val norm = DrugInteractionEngine.normalizeDrugName(it)
+                    norm == normalizedDetected || norm.contains(normalizedDetected) || normalizedDetected.contains(norm)
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.Start
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (isAlreadyTaking) Color(0xFFE24B4A).copy(alpha = 0.15f) else colors.accent.copy(alpha = 0.15f),
+                        modifier = Modifier.animateContentSize()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Text(if (isAlreadyTaking) "⚠️" else "💊", fontSize = 12.sp)
+                            Text(
+                                text = drug.replaceFirstChar { it.uppercase() } + if (isAlreadyTaking) (if (isFr) " (Déjà pris)" else " (Already taking)") else "",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isAlreadyTaking) Color(0xFFE24B4A) else colors.accent
+                            )
+                            // Croix pour effacer si l'user veut
+                            Text(
+                                text = "×",
+                                fontSize = 14.sp,
+                                color = colors.textSecondary,
+                                modifier = Modifier.clickable { detectedDrugName = null }
+                            )
+                        }
+                    }
+                }
+            }
+
             Row(Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom) {
@@ -1011,7 +1217,20 @@ fun MedVoiceChatScreen(
                     .scale(if (isListening) micScale else 1f)
                     .background(if (isListening) Color(0xFFE24B4A) else colors.bgInput, CircleShape),
                     contentAlignment = Alignment.Center) {
-                    IconButton(onClick = { if (!isListening) onLaunchSpeech() }) { Text("🎤", fontSize = 15.sp) }
+                    IconButton(onClick = { if (!isListening) onLaunchSpeech() }) { 
+                        Text(if (isConsultationMode) "👂" else "🎤", fontSize = 15.sp) 
+                    }
+                }
+                Spacer(Modifier.width(6.dp))
+                // Toggle pour le mode consultation
+                Box(Modifier
+                    .size(42.dp)
+                    .background(if (isConsultationMode) colors.accent.copy(alpha = 0.2f) else colors.bgInput, CircleShape)
+                    .clickable { onConsultationModeChanged(!isConsultationMode) },
+                    contentAlignment = Alignment.Center) {
+                    Text(if (isConsultationMode) "∞" else "1", 
+                        color = if (isConsultationMode) colors.accent else colors.textSecondary,
+                        fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.width(6.dp))
                 val canSend = (inputText.isNotBlank() || pendingImage != null) && !isLoading && !isGenerating
@@ -1033,7 +1252,12 @@ fun MedVoiceChatScreen(
                                 onSendMessage, { isLoading = it }, { inputText = "" }, onClearPendingImage,
                                 { id -> activeSessionId = id; onSessionCreated(id) }, scope, tts = tts, context = context,
                                 onDosageResult = { pendingDosageResult = it },
-                                onDosageParams = { lastDosageParams = it })
+                                onDosageParams = { lastDosageParams = it },
+                                currentMeds = currentMedications,
+                                isOnline = effectivelyOnline,
+                                isConsultationMode = isConsultationMode,
+                                onRestartListening = { onLaunchSpeech() })
+
                         }) { Text("→", fontSize = 18.sp, color = if (canSend) Color.White else colors.textSecondary, fontWeight = FontWeight.Bold) }
                     }
                 }
@@ -1085,21 +1309,27 @@ fun MedVoiceChatScreen(
 
         // DosageCard overlay : affichee quand un resultat de dosage est disponible
         pendingDosageResult?.let { dosage ->
-            DosageCard(
-                result = dosage,
-                onDismiss = { pendingDosageResult = null },
-                onInjectToChat = { dosageText ->
-                    // INJECTION DIRECTE DANS LE CHAT ICI
-                    messages.add(
-                        ChatMessage(
-                            text = dosageText,
-                            isUser = false,
-                            triageLevel = TriageLevel.VERT
-                        )
-                    )
+            if (dosage.source == DosageSource.INSUFFICIENT_DATA) {
+                // Injecter directement dans le chat comme message IA (pas de card)
+                // et vider le pending immédiatement
+                LaunchedEffect(dosage) {
+                    messages.add(ChatMessage(
+                        text = dosage.specialInstructions,
+                        isUser = false,
+                        triageLevel = TriageLevel.UNKNOWN
+                    ))
                     pendingDosageResult = null
                 }
-            )
+            } else {
+                DosageCard(
+                    result = dosage,
+                    onDismiss = { pendingDosageResult = null },
+                    onInjectToChat = { dosageText, triage ->
+                        messages.add(ChatMessage(text = dosageText, isUser = false, triageLevel = triage))
+                        pendingDosageResult = null
+                    }
+                )
+            }
         }
     }
 }
@@ -1110,7 +1340,7 @@ fun MedVoiceChatScreen(
 fun DosageCard(
     result: DosageResult,
     onDismiss: () -> Unit,
-    onInjectToChat: (String) -> Unit
+    onInjectToChat: (String, TriageLevel) -> Unit
 ) {
     val colors = LocalMedVoiceColors.current
     val isFr = java.util.Locale.getDefault().language == "fr"
@@ -1121,14 +1351,34 @@ fun DosageCard(
         DosageSource.LLM_LLAMA     -> if (isFr) "Calcule par IA locale" else "Calculated by local AI"
         DosageSource.INSUFFICIENT_DATA -> if (isFr) "Donnees insuffisantes" else "Insufficient data"
     }
-    val chatText = buildString {
-        appendLine(if (isFr) "**Posologie - ${result.medicineName}**" else "**Dosage - ${result.medicineName}**")
-        appendLine(if (isFr) "Dose par prise : **${result.dosePerTake}**" else "Dose per intake: **${result.dosePerTake}**")
-        appendLine(if (isFr) "Frequence : **${result.frequencyPerDay}x/jour**" else "Frequency: **${result.frequencyPerDay}x/day**")
-        appendLine(if (isFr) "Duree : **${result.durationDays} jours**" else "Duration: **${result.durationDays} days**")
-        if (result.specialInstructions.isNotBlank()) appendLine(result.specialInstructions)
-        if (result.warningMessage.isNotBlank()) appendLine("${result.warningMessage}")
-        appendLine("_$_sourceLabel [TRIAGE:VERT]")
+
+    // Calcule dynamiquement le niveau de triage selon la dose ou les alertes
+    val effectiveTriage = when {
+        result.dosePerTake == "INTERDIT" || result.dosePerTake == "STOP" -> TriageLevel.ROUGE
+        result.warningMessage.contains("⚠️") || result.warningMessage.contains("⛔") -> TriageLevel.JAUNE
+        result.dosePerTake == "Inconnu" -> TriageLevel.JAUNE
+        else -> TriageLevel.VERT
+    }
+
+    val chatText = if (result.dosePerTake == "INTERDIT" || result.dosePerTake == "STOP") {
+        buildString {
+            append(if (isFr) "⚠️ **Contre-indication : ${result.medicineName}**\n\n" else "⚠️ **Contraindication: ${result.medicineName}**\n\n")
+            append(result.specialInstructions)
+            if (result.warningMessage.isNotBlank()) append(" ${result.warningMessage}")
+            append("\n\n_$_sourceLabel [TRIAGE:${effectiveTriage.name}]_")
+        }
+    } else {
+        buildString {
+            if (isFr) {
+                append("La posologie calculée pour le **${result.medicineName}** est de **${result.dosePerTake}**, à prendre **${result.frequencyPerDay} fois par jour** pendant une durée de **${result.durationDays} jours**.")
+                if (result.specialInstructions.isNotBlank()) append("\n\n**Instructions :** ${result.specialInstructions}")
+            } else {
+                append("The calculated dosage for **${result.medicineName}** is **${result.dosePerTake}**, to be taken **${result.frequencyPerDay} times a day** for **${result.durationDays} days**.")
+                if (result.specialInstructions.isNotBlank()) append("\n\n**Instructions:** ${result.specialInstructions}")
+            }
+            if (result.warningMessage.isNotBlank()) append("\n\n**Attention :** ${result.warningMessage}")
+            append("\n\n_$_sourceLabel [TRIAGE:${effectiveTriage.name}]_")
+        }
     }
 
     Box(
@@ -1148,7 +1398,7 @@ fun DosageCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (isFr) "Posologie calculee" else "Calculated dosage",
+                    text = if (isFr) "Posologie calculée" else "Calculated dosage",
                     color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp,
                     modifier = Modifier.weight(1f)
                 )
@@ -1164,12 +1414,30 @@ fun DosageCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Dose + frequence + duree
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                DosagePill(label = if (isFr) "Dose" else "Dose", value = result.dosePerTake, colors)
-                DosagePill(label = if (isFr) "Freq." else "Freq.", value = "${result.frequencyPerDay}x/j", colors)
-                DosagePill(label = if (isFr) "Duree" else "Duration", value = "${result.durationDays}j", colors)
+            if (result.dosePerTake != "INTERDIT" && result.dosePerTake != "STOP") {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    DosagePill(label = if (isFr) "Dose" else "Dose", value = result.dosePerTake, colors)
+                    DosagePill(label = if (isFr) "Frequence" else "Frequence", value = "${result.frequencyPerDay}x/j", colors)
+                    DosagePill(label = if (isFr) "Durée" else "Duration", value = "${result.durationDays}j", colors)
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            } else {
+                Surface(
+                    color = Color(0xFFE24B4A).copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = if (isFr) "USAGE INTERDIT / CONTRE-INDIQUÉ" else "USAGE FORBIDDEN / CONTRAINDICATED",
+                        color = Color(0xFFE24B4A),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(12.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
             }
-            Spacer(modifier = Modifier.height(10.dp))
 
             // Instructions
             if (result.specialInstructions.isNotBlank()) {
@@ -1192,7 +1460,7 @@ fun DosageCard(
 
             // Bouton injecter dans le chat
             Button(
-                onClick = { onInjectToChat(chatText) },
+                onClick = { onInjectToChat(chatText, effectiveTriage) },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -1203,6 +1471,18 @@ fun DosageCard(
             }
         }
     }
+}
+
+fun detectIfFrench(text: String): Boolean {
+    val frenchKeywords = listOf("combien", "donner", "poids", "enfant", "est-ce", "ordonnance")
+    val englishKeywords = listOf("how", "give", "weight", "child", "should", "prescription")
+
+    val frCount = frenchKeywords.count { text.contains(it, ignoreCase = true) }
+    val enCount = englishKeywords.count { text.contains(it, ignoreCase = true) }
+
+    return if (frCount == 0 && enCount == 0) {
+        Locale.getDefault().language == "fr" // Fallback
+    } else frCount >= enCount
 }
 
 @Composable
@@ -1410,7 +1690,11 @@ private fun doSend(
     tts: TextToSpeech? = null,
     context: Context? = null,
     onDosageResult: (DosageResult) -> Unit = {},
-    onDosageParams: (DosageParams) -> Unit = {}
+    onDosageParams: (DosageParams) -> Unit = {},
+    currentMeds: List<String> = emptyList(),
+    isOnline: Boolean = false,
+    isConsultationMode: Boolean = false,
+    onRestartListening: () -> Unit = {}
 ) {
     val text = input.trim()
     if (text.isBlank() && image == null) return
@@ -1432,12 +1716,24 @@ private fun doSend(
 
             scope.launch {
                 val isFrD = Locale.getDefault().language == "fr"
-                val dr = DosageFunctionCalling.calculateDosage(dosageParams, GemmaEngine(context), false, isFrD)
+                val dr = DosageFunctionCalling.calculateDosage(dosageParams, GemmaEngine(context!!), isOnline, isFrD, currentMeds)
 
                 // CORRECTION 2 : On déclenche la carte et on arrête le chargement
                 setLoading(false)
                 onDosageParams(dosageParams)
-                dr?.let { onDosageResult(it) }
+                dr?.let { result ->
+                    onDosageResult(result)
+                    if (isConsultationMode && tts != null) {
+                        val speechText = if (isFrD) {
+                            "Posologie pour ${result.medicineName} : ${result.dosePerTake}, ${result.frequencyPerDay} fois par jour pendant ${result.durationDays} jours. ${result.specialInstructions}"
+                        } else {
+                            "Dosage for ${result.medicineName}: ${result.dosePerTake}, ${result.frequencyPerDay} times a day for ${result.durationDays} days. ${result.specialInstructions}"
+                        }
+                        tts.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "ai_response")
+                    } else if (isConsultationMode) {
+                        onRestartListening()
+                    }
+                } ?: run { if (isConsultationMode) onRestartListening() }
 
                 // Optionnel : Sauvegarder ce message dans Room (comme pour le Fon)
                 val sessionId: Long = currentSessionId ?: db.sessionDao().insertSession(
@@ -1469,6 +1765,12 @@ private fun doSend(
                 triageLevel = TriageLevel.ROUGE
             ))
 
+            if (isConsultationMode && tts != null) {
+                tts.speak(urgenceFon.conseil_fon, TextToSpeech.QUEUE_FLUSH, null, "ai_response")
+            } else if (isConsultationMode) {
+                onRestartListening()
+            }
+
             scope.launch {
                 val isFrFon = Locale.getDefault().language == "fr"
                 val titleFon = "🔴 ${urgenceFon.question_fr.take(35)}"
@@ -1498,31 +1800,33 @@ private fun doSend(
     clearInput(); clearImage()
     messages.add(ChatMessage(text = text, isUser = true, imageBitmap = image))
     setLoading(true)
-    val isFr = Locale.getDefault().language == "fr"
-    val prompt = text.ifBlank { if (isFr) "Analyse cette image médicalement." else "Analyze this image medically." }
+    val isFr = detectIfFrench(text)
+    val medsPrompt = if (currentMeds.isNotEmpty()) {
+        if (isFr) "\n\nNote: Le patient prend déjà : ${currentMeds.joinToString(", ")}. Vérifie scrupuleusement les interactions avec ce nouveau traitement et réponds par un paragraphe clair et bien structuré."
+        else "\n\nNote: Patient is already taking: ${currentMeds.joinToString(", ")}. Carefully check for interactions with this new treatment and respond with a clear and well-structured paragraph."
+    } else ""
+    
+    val userLang = if (detectIfFrench(text)) "fr" else "en"
+    
+    val prompt = (text + medsPrompt).ifBlank { 
+        if (isFr) "Analyse cette image médicalement en tenant compte des médicaments actuels : ${currentMeds.joinToString(", ")}." 
+        else "Analyze this image medically considering current medications: ${currentMeds.joinToString(", ")}."
+    }
 
     onSendMessage(prompt, image) { result ->
         setLoading(false)
         val rawResponse = if (result.isSuccess) result.getOrDefault("") else ""
         val triage = GemmaEngine.parseTriageLevelFromTag(rawResponse)
 
-        when (triage) {
-            TriageLevel.ROUGE -> tts?.speak(
-                if (isFr) "Urgence vitale détectée. Transfert immédiat requis."
-                else "Critical emergency. Immediate transfer required.",
-                TextToSpeech.QUEUE_ADD, null, "triage_rouge"
-            )
-            TriageLevel.JAUNE -> tts?.speak(
-                if (isFr) "Cas modéré. Consultation dans les 24 heures."
-                else "Moderate case. Consultation within 24 hours.",
-                TextToSpeech.QUEUE_ADD, null, "triage_jaune"
-            )
-            else -> { }
-        }
-
         val cleaned = GemmaEngine.cleanResponse(rawResponse)
-        val cleanVoiceText = cleaned.replace("*", "")
+        val cleanVoiceText = cleaned.replace("*", "").trim()
         val isEnglishResponse = cleanVoiceText.contains(Regex("\\b(the|is|you|how|what)\\b", RegexOption.IGNORE_CASE))
+
+        val voicePrefix = when (triage) {
+            TriageLevel.ROUGE -> if (isFr) "Urgence vitale détectée. Transfert immédiat requis. " else "Critical emergency. Immediate transfer required. "
+            TriageLevel.JAUNE -> if (isFr) "Cas modéré. Consultation dans les 24 heures. " else "Moderate case. Consultation within 24 hours. "
+            else -> ""
+        }
 
         if (result.isSuccess) {
             // L'Orchestrateur vérifie si le LLM a sorti un JSON malgré tout
@@ -1533,14 +1837,23 @@ private fun doSend(
 
             // Si l'IA standard a quand même sorti un dosage, on l'affiche
             dosageResult?.let { onDosageResult(it) }
-        } else {
-            messages.add(ChatMessage(
-                text = if (isFr) "Erreur : ${result.exceptionOrNull()?.message}" else "Error: ${result.exceptionOrNull()?.message}",
-                isUser = false))
-        }
 
-        tts?.language = if (isEnglishResponse) Locale.ENGLISH else Locale.FRENCH
-        tts?.speak(cleanVoiceText, TextToSpeech.QUEUE_ADD, null, "ai_response")
+            val fullVoiceText = (voicePrefix + cleanVoiceText).trim()
+            if (fullVoiceText.isNotBlank() && tts != null) {
+                tts.language = if (isEnglishResponse) Locale.ENGLISH else Locale.FRENCH
+                tts.speak(fullVoiceText, TextToSpeech.QUEUE_ADD, null, "ai_response")
+            } else if (isConsultationMode) {
+                onRestartListening()
+            }
+        } else {
+            val errorMsg = if (isFr) "Erreur : ${result.exceptionOrNull()?.message}" else "Error: ${result.exceptionOrNull()?.message}"
+            messages.add(ChatMessage(text = errorMsg, isUser = false))
+            if (tts != null) {
+                tts.speak(errorMsg, TextToSpeech.QUEUE_ADD, null, "ai_error")
+            } else if (isConsultationMode) {
+                onRestartListening()
+            }
+        }
 
         scope.launch {
             val sessionId: Long = if (currentSessionId != null) {

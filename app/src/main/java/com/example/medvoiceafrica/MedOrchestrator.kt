@@ -6,7 +6,9 @@ data class AiAction(
     val drug: String? = null,
     val weight_kg: Double? = null,
     val age_years: Int? = null,
-    val triage: String? = null
+    val triage: String? = null,
+    val interaction_detected: Boolean = false,
+    val missing_data: Boolean = false
 )
 
 object MedOrchestrator {
@@ -34,12 +36,18 @@ object MedOrchestrator {
         return try {
             val action = gson.fromJson(cleanJsonPart, AiAction::class.java)
 
-            if (action.weight_kg != null && action.drug != null) {
-                // Appel à ta fonction existante avec les sécurités[cite: 6]
-                val result = calculate(action.drug, action.weight_kg)
-                Pair(humanText, result)
-            } else {
-                Pair(humanText, null)
+            when {
+                // L'IA signale explicitement qu'il manque des données
+                action.missing_data -> Pair(humanText, null)  // humanText contient déjà la question de l'IA
+
+                // Interaction détectée → pas de calcul de dosage
+                action.interaction_detected -> Pair(humanText, null)
+
+                // Calcul normal
+                action.weight_kg != null && action.drug != null ->
+                    Pair(humanText, calculate(action.drug, action.weight_kg))
+
+                else -> Pair(humanText, null)
             }
         } catch (e: Exception) {
             Pair(humanText, null)

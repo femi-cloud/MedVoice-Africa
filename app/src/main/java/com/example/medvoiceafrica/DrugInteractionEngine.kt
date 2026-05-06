@@ -165,7 +165,7 @@ object DrugInteractionEngine {
     }
 
     // ── Niveau 1 : Table locale ───────────────────────────────────
-    private fun checkLocalTable(
+    fun checkLocalTable(
         scannedMol: String,
         currentMeds: List<String>,
         isFr: Boolean
@@ -335,12 +335,12 @@ Reply ONLY with this JSON format (nothing else):
     }
 
     // ── Normalisation d'un nom de médicament ─────────────────────
-    private fun normalizeDrugName(name: String): String {
-        val lower = name.lowercase().trim()
+    fun normalizeDrugName(name: String): String {
+        val normalizedInput = name.lowercase().trim().stripAccents()
         // Cherche d'abord une correspondance directe dans le dictionnaire
         for ((key, normalized) in DRUG_NAME_MAP) {
-            if (lower.contains(key)) return normalized
+            if (normalizedInput.contains(key.stripAccents()) || key.stripAccents().contains(normalizedInput)) return normalized
         }
-        return lower
+        return normalizedInput
     }
 }

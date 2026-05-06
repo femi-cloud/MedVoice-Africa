@@ -41,25 +41,39 @@ class GemmaEngine(private val context: Context) {
       "drug": "nom_du_medicament",
       "weight_kg": 0.0,
       "age_years": 0,
-      "triage": "ROUGE|JAUNE|VERT"
+      "triage": "ROUGE|JAUNE|VERT",
+      "interaction_detected": false
     }
     """.trimIndent()
 
             // ── NOUVELLES RÈGLES DE SÉCURITÉ ──
             val safetyRules = if (lang == "fr") """
-4. SÉCURITÉ INTERACTIONS : Vérifie systématiquement les traitements en cours mentionnés. 
-   - Si risque (ex: Aspirine + Anticoagulant), passe en [TRIAGE:ROUGE] et alerte sur le danger.
-5. RÈGLE D'OR DU POIDS (Adulte & Enfant) : 
-   - Si l'utilisateur demande une dose mais que le poids (weight_kg) est absent ou inconnu :
+4. SÉCURITÉ INTERACTIONS : Vérifie systématiquement les traitements en cours mentionnés par l'utilisateur. 
+   - Si un risque d'interaction existe (ex: Aspirine + Anticoagulant, ou deux médicaments de même classe), passe impérativement en [TRIAGE:ROUGE], explique le danger en détail dans un paragraphe clair, et mets "interaction_detected": true dans le JSON.
+5. FORMAT : Réponds toujours par un paragraphe bien structuré et fluide. Évite les listes à puces si possible.
+6. RÈGLE D'OR DU POIDS (Adulte & Enfant) : 
+   - Si l'utilisateur demande une dose mais que le poids (weight_kg) est absent :
      a) NE GÉNÈRE PAS le bloc JSON [[DATA]].
-     b) Réponds : "Pour vous répondre en toute sécurité, j'ai besoin de connaître le poids de la personne concernée."
-""".trimIndent() else """..."""
+     b) Réponds par un paragraphe demandant poliment le poids pour garantir la sécurité.
+""".trimIndent() else """
+4. INTERACTION SAFETY: Systematically check the current treatments mentioned by the user.
+   - If an interaction risk exists, use [TRIAGE:ROUGE], explain the danger in a clear paragraph, and set "interaction_detected": true in the JSON.
+5. FORMAT: Always respond with a well-structured, fluid paragraph. Avoid bullet points if possible.
+6. WEIGHT RULE: If a dose is requested but weight is missing:
+   a) DO NOT generate the [[DATA]] block.
+   b) Respond with a paragraph politely asking for the weight.
+""".trimIndent()
 
-            val extractionRules = """
-    - NE CALCULE JAMAIS DE DOSAGE. Extrais juste les données.
-    - Tu DOIS inclure un tag de triage ([TRIAGE:ROUGE|JAUNE|VERT]) au début.
-    - SI ET SEULEMENT SI toutes les données (poids pour enfant, absence d'interaction) sont réunies, termine par le bloc JSON entre [[DATA]] et [[/DATA]] :
-    $jsonStructure
+            val extractionRules = if (lang == "fr") """
+    - NE CALCULE JAMAIS DE DOSAGE TOI-MÊME. Ton rôle est d'extraire les données pour le système local.
+    - Tu DOIS inclure un tag de triage ([TRIAGE:ROUGE|JAUNE|VERT]) au tout début de ta réponse.
+    - SI ET SEULEMENT SI toutes les données (nom molécule, poids, absence d'interaction) sont réunies, termine ton message par le bloc JSON entre [[DATA]] et [[/DATA]].
+    - Structure du JSON : $jsonStructure
+    """.trimIndent() else """
+    - NEVER CALCULATE DOSAGE YOURSELF. Your role is to extract data for the local system.
+    - You MUST include a triage tag ([TRIAGE:ROUGE|JAUNE|VERT]) at the very beginning.
+    - IF AND ONLY IF all data (drug name, weight, no interaction) are present, end your message with the JSON block between [[DATA]] and [[/DATA]].
+    - JSON Structure: $jsonStructure
     """.trimIndent()
 
             return if (isPublicMode) {
@@ -67,20 +81,34 @@ class GemmaEngine(private val context: Context) {
             Tu es MedVoice Africa, un conseiller de santé expert et prudent.
             RÈGLES :
             1. $extractionRules
-            2. Ton message doit être simple et rassurer l'utilisateur.
-            3. Ne mentionne AUCUN chiffre de dosage dans ton texte.
+            2. Ton message doit être simple, rassurant et rédigé en paragraphes fluides.
+            3. Ne mentionne AUCUN chiffre de dosage (mg/ml) dans ton texte, laisse le système s'en charger.
             $safetyRules
-        """.trimIndent() else """..."""
+        """.trimIndent() else """
+            You are MedVoice Africa, an expert and cautious health advisor.
+            RULES:
+            1. $extractionRules
+            2. Your message should be simple, reassuring, and written in fluid paragraphs.
+            3. Do NOT mention any dosage numbers (mg/ml) in your text, let the system handle it.
+            $safetyRules
+        """.trimIndent()
             } else {
                 // Version Pro
                 if (lang == "fr") """
-            Tu es MedVoice Africa, assistant pour professionnels.
+            Tu es MedVoice Africa, assistant expert pour professionnels de santé.
             RÈGLES :
             1. $extractionRules
-            2. Utilise un langage clinique précis.
-            3. Indique que le dosage final est calculé par le système local.
+            2. Utilise un langage clinique précis et structuré en paragraphes.
+            3. Indique clairement que le dosage final est validé par les protocoles locaux.
             $safetyRules
-        """.trimIndent() else """..."""
+        """.trimIndent() else """
+            You are MedVoice Africa, an expert assistant for healthcare professionals.
+            RULES:
+            1. $extractionRules
+            2. Use precise clinical language structured in paragraphs.
+            3. Clearly state that the final dosage is validated by local protocols.
+            $safetyRules
+        """.trimIndent()
             }
         }
 
@@ -208,9 +236,22 @@ class GemmaEngine(private val context: Context) {
         } catch (_: Exception) { false }
     }
 
+    private fun detectIfFrench(text: String): Boolean {
+        val frenchKeywords = listOf("combien", "donner", "poids", "enfant", "est-ce", "ordonnance", "prendre", "puis-je", "peut-on")
+        val englishKeywords = listOf("how", "give", "weight", "child", "should", "prescription", "take", "can i", "can we")
+
+        val frCount = frenchKeywords.count { text.contains(it, ignoreCase = true) }
+        val enCount = englishKeywords.count { text.contains(it, ignoreCase = true) }
+
+        return if (frCount == 0 && enCount == 0) {
+            Locale.getDefault().language == "fr" // Fallback
+        } else frCount >= enCount
+    }
+
     suspend fun runInference(userMessage: String, imageBitmap: Bitmap? = null): Result<String> =
         withContext(Dispatchers.IO) {
-            val lang = getDeviceLanguage()
+            val isInputFr = detectIfFrench(userMessage)
+            val lang = if (isInputFr) "fr" else "en"
 
             // RAG: find relevant protocols BEFORE trying network (needed for offline too)
             val relevantProtocols = ragEngine.findRelevant(userMessage)
@@ -280,7 +321,11 @@ class GemmaEngine(private val context: Context) {
                 }
 
                 val json = JSONObject(rawResponse)
-                val parts = json.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts")
+                val candidates = json.getJSONArray("candidates")
+                if (candidates.length() == 0) return@withContext Result.failure(Exception("No candidates"))
+                
+                val candidate = candidates.getJSONObject(0)
+                val parts = candidate.getJSONObject("content").getJSONArray("parts")
                 val textBuilder = StringBuilder()
                 for (i in 0 until parts.length()) {
                     val part = parts.getJSONObject(i)
