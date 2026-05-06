@@ -277,8 +277,9 @@ MedVoice Africa is a **decision-support tool** for trained community health work
 
 <div align="center">
 
-**Built for the Kaggle x Google Deepmind — Gemma 4 Good Hackathon**
+**For the Kaggle x Google Deepmind — Gemma 4 Good Hackathon**
 
-*Bridging the medical desert, one village at a time.*
+*Made with 💗 for the African Community.*
+
 
 </div>
