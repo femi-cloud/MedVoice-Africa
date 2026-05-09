@@ -149,8 +149,6 @@ Create or edit `local.properties` at the project root:
 GEMINI_API_KEY=your_api_key_here
 ```
 
-> ⚠️ Never commit this file. It is already in `.gitignore`.
-
 ### 3. (Optional) Enable local offline model
 
 For full offline AI capability, download the GGUF model and place it in your device's Downloads folder:
@@ -263,7 +261,7 @@ Please open an issue before submitting a large PR.
 
 ```
 Copyright 2026 MedVoice Africa Contributors
-Licensed under the Apache License, Version 2.0 (the "License")
+Licensed under the Apache License, Version 2.0
 
 ```
 
