@@ -31,7 +31,7 @@ The result: preventable deaths from treatable conditions like malaria, diarrhea,
 
 ## 💡 The Solution
 
-**MedVoice Africa** is an edge-AI agent that runs entirely on a mid-range Android phone, **with or without internet**. It puts a trained medical reasoning engine in the hands of every community health worker, anywhere.
+**MedVoice Africa** is an edge-AI agent that runs entirely on a mid-range Android phone, **with or without internet**. It puts a trained medical reasoning engine in the hands of every person within the West African community and every community health worker, anywhere.
 
 ```
 No WiFi. No server. No problem.
