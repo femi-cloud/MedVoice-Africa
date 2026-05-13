@@ -7,6 +7,8 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-purple.svg)](https://kotlinlang.org)
 [![Model](https://img.shields.io/badge/LLM-Gemma%204%20-orange.svg)](https://ai.google.dev/gemma)
 [![Status](https://img.shields.io/badge/Status-Hackathon%20Build-yellow.svg)]()
+[![Model](https://img.shields.io/badge/HuggingFace-Fysna/medvoice_final_v2-yellow)](https://huggingface.co/Fysna/medvoice_final_v2)
+
 
 > **An offline-first, multimodal AI medical assistant powered by Gemma 4, built to bridge the deadly gap between symptom onset and professional care in rural Africa.**
 
@@ -126,7 +128,9 @@ User message
 
 ## 🛠️ Installation & Setup
 
-> **Note:** Model weights are not hosted on GitHub due to file size limits.
+> Download the GGUF model from HuggingFace: [Fysna/medvoice_final_v2](https://huggingface.co/Fysna/medvoice_final_v2)
+> File: `medvoice_final_v2.gguf` (~3.4 GB)
+> Place it in `/storage/emulated/0/Download/`
 
 ### Prerequisites
 
@@ -154,7 +158,7 @@ GEMINI_API_KEY=your_api_key_here
 For full offline AI capability, download the GGUF model and place it in your device's Downloads folder:
 
 ```
-/storage/emulated/0/Download/medvoice_final.gguf
+/storage/emulated/0/Download/medvoice_final_v2.gguf
 ```
 
 The app detects RAM automatically:
@@ -225,7 +229,7 @@ app/src/main/
 - [x] Fon language emergency responses
 - [x] SMS + WhatsApp case transfer
 - [x] Session history + epidemiological log
-- [ ] Whisper.cpp local STT integration
+- [x] Whisper.cpp local STT integration
 - [ ] Piper local TTS (Fon voice)
 - [ ] Skin/eye condition visual analysis (MediaPipe)
 - [ ] Multi-user / CSPS network sync
