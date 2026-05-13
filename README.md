@@ -12,7 +12,7 @@
 
 > **An offline-first, multimodal AI medical assistant powered by Gemma 4, built to bridge the deadly gap between symptom onset and professional care in rural Africa.**
 
-[Features](###-What-it-does) · [Architecture](#-architecture) · [Setup](#%EF%B8%8F-installation--setup) · [Screenshots](#-screenshots) · [Roadmap](#-roadmap)
+[Features](#What-it-does) · [Architecture]([#-architecture](#%EF%B8%8F-architecture)) · [Setup](#%EF%B8%8F-installation--setup) · [Screenshots](#-screenshots) · [Roadmap](#-roadmap)
 
 </div>
 
