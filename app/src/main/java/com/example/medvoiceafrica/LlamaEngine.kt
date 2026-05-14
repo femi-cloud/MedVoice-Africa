@@ -44,7 +44,7 @@ sealed class LlamaResult {
 object LlamaEngine {
 
     private const val TAG = "LlamaEngine"
-    private const val MODEL_FILENAME = "medvoice_final.gguf"
+    private const val MODEL_FILENAME = "medvoice_final_v2.gguf"
     private const val MODEL_PATH_DOWNLOAD = "/storage/emulated/0/Download/$MODEL_FILENAME"
 
     // Chemin alternatif si l'user a mis le fichier dans un sous-dossier
@@ -97,13 +97,15 @@ object LlamaEngine {
 
         // Dans ta fonction initialize()
         val downloadFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val modelFile = File(downloadFolder, "medvoice_final.gguf")
+        val modelFile = File(downloadFolder, MODEL_FILENAME)
 
-    // --- AJOUTE CE BLOC DE DEBUG ICI ---
+        // --- AJOUTE CE BLOC DE DEBUG ICI ---
         if (!modelFile.exists()) {
             Log.e("MEDVOICE_DEBUG", " ERREUR : Le fichier est introuvable à cette adresse : ${modelFile.absolutePath}")
             // Envoie un message sur l'écran pour être sûr de le voir
-            Toast.makeText(context, "Fichier GGUF introuvable dans Downloads", Toast.LENGTH_LONG).show()
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Fichier GGUF introuvable dans Downloads", Toast.LENGTH_LONG).show()
+            }
             return@withContext LlamaState.Failed(FailReason.FILE_NOT_FOUND)
         } else {
             Log.d("MEDVOICE_DEBUG", "Fichier trouvé ! Taille : ${modelFile.length() / 1024 / 1024} Mo")
@@ -177,11 +179,14 @@ object LlamaEngine {
             val output = model?.generate(
                 prompt = fullPrompt,
                 configOverride = LlamaConfig {
-                    maxTokens = MAX_TOKENS
-                    temperature = 0.65f
-                    topK = 40
-                    topP = 0.95f
+                    maxTokens     = MAX_TOKENS
+                    temperature   = 0.1f    // ✅ quasi-déterministe pour structured output médical
+                    topK          = 1       // greedy : cohérent avec do_sample=False du training
+                    topP          = 1.0f
                     repeatPenalty = 1.1f
+                    // Stop tokens : <end_of_turn>=3, <eos>=1
+                    // llama-android les passe via stopSequences
+                    stopSequences = listOf("<end_of_turn>", "<eos>")
                 }
             ) ?: ""
 
@@ -205,15 +210,15 @@ object LlamaEngine {
         }
     }
 
-    // ── Prompt au format ChatML ───────────────────────────────────
+    // ── Prompt au format Gemma (identique au training) ───────────
+    // ⚠️ CRITIQUE : le modèle a été entraîné SANS system prompt et
+    // avec le format <start_of_turn>, PAS ChatML (<|im_start|>).
+    // Utiliser ChatML = le modèle ne reconnaît pas le format → hallucinations.
+    // Le RAG context est injecté dans la question user si présent.
     private fun buildChatMLPrompt(system: String, rag: String, user: String): String {
-        val systemFull = if (rag.isNotBlank()) "$system\n\n$rag" else system
-        return """<|im_start|>system
-$systemFull<|im_end|>
-<|im_start|>user
-$user<|im_end|>
-<|im_start|>assistant
-""".trimIndent()
+        // system ignoré volontairement — absent du training dataset
+        val userFull = if (rag.isNotBlank()) "$rag\n\n$user" else user
+        return "<start_of_turn>user\n${userFull}<end_of_turn>\n<start_of_turn>model\n"
     }
 
     // ── Message de fallback offline ───────────────────────────────

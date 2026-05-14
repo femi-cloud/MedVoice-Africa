@@ -16,7 +16,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.ui.res.painterResource
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,7 +41,8 @@ data class ConsultationLog(
     val pathologie: String,
     val triage: String,
     val sessionId: Long = -1,
-    val isOffline: Boolean = false
+    val isOffline: Boolean = false,
+    @ColumnInfo(name = "synced") val synced: Int = 0
 )
 
 // Helper pour extraire la pathologie
@@ -112,6 +115,13 @@ interface ConsultationDao {
         WHERE timestamp > :since
     """)
     fun totalThisWeek(since: Long = System.currentTimeMillis() - 7 * 24 * 3600 * 1000L): Flow<Int>
+
+    @Query("SELECT * FROM consultation_log WHERE synced = 0 ORDER BY timestamp ASC LIMIT 50")
+    suspend fun getUnsyncedLogs(): List<ConsultationLog>
+
+    @Query("UPDATE consultation_log SET synced = 1 WHERE id IN (:ids)")
+    suspend fun markAsSynced(ids: List<Long>)
+
 }
 
 // Projection pour GROUP BY
@@ -156,14 +166,18 @@ fun StatsScreen(
                 .padding(horizontal = 8.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // FIX: clickable sur un Box pour zone de tap suffisante
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .clickable { onBack() }
                     .padding(8.dp)
             ) {
-                Text("←", fontSize = 20.sp, color = colors.textSecondary)
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_arrow_back),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = colors.textSecondary
+                )
             }
             Spacer(Modifier.width(8.dp))
             Column {

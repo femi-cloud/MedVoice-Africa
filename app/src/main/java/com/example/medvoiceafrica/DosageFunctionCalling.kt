@@ -179,12 +179,12 @@ object DosageFunctionCalling {
         val weightKg = Regex("(\\d+(?:\\.\\d+)?)\\s*(?:kg|kilo|kilos)").find(msg)
             ?.groupValues?.get(1)?.toDoubleOrNull()
 
-        // Extraire l'âge en années (ex: "3 ans", "3ans")
-        val ageYears = Regex("(\\d+)\\s*(?:ans|an|years?|yr)").find(msg)
+        // Extraire l'âge en années (ex: "3 ans", "3ans", "3 xwè")
+        val ageYears = Regex("(\\d+)\\s*(?:ans|an|years?|yr|xwè|xwe)").find(msg)
             ?.groupValues?.get(1)?.toDoubleOrNull()
 
-        // Extraire l'âge en mois (ex: "6 mois", "18 months")
-        val ageMonths = Regex("(\\d+)\\s*(?:mois|months?)").find(msg)
+        // Extraire l'âge en mois (ex: "6 mois", "18 months", "6 sun")
+        val ageMonths = Regex("(\\d+)\\s*(?:mois|months?|sun)").find(msg)
             ?.groupValues?.get(1)?.toDoubleOrNull()
 
         // Extraire le nom du médicament depuis le message
@@ -201,6 +201,7 @@ object DosageFunctionCalling {
         )
     }
 
+
     // ── Étape C : Calcul local ou LLM ────────────────────────────
     suspend fun calculateDosage(
         params: DosageParams,
@@ -209,6 +210,21 @@ object DosageFunctionCalling {
         isFr: Boolean,
         currentMeds: List<String> = emptyList()
     ): DosageResult = withContext(Dispatchers.IO) {
+
+        // ── ÉTAPE 0 : Validation du poids (Sécurité) ─────────────────────────────────
+        if (params.patientWeightKg != null && (params.patientWeightKg < 0.1 || params.patientWeightKg > 250.0)) {
+            return@withContext DosageResult(
+                medicineName = params.medicineName.replaceFirstChar { it.uppercase() },
+                dosePerTake = "VALEUR ABSURDE",
+                frequencyPerDay = 0,
+                durationDays = 0,
+                specialInstructions = if (isFr)
+                    "Le poids renseigné (${params.patientWeightKg} kg) semble incorrect. Veuillez vérifier."
+                else "The weight provided (${params.patientWeightKg} kg) seems incorrect. Please verify.",
+                warningMessage = if (isFr) "Sécurité : poids hors limites." else "Safety: weight out of bounds.",
+                source = DosageSource.INSUFFICIENT_DATA
+            )
+        }
 
         val medicineKey = params.medicineName.lowercase().trim()
         val protocol = DOSAGE_PROTOCOLS[medicineKey]
@@ -225,9 +241,9 @@ object DosageFunctionCalling {
                     frequencyPerDay = 0,
                     durationDays = 0,
                     specialInstructions = if (isFr)
-                        "⛔ ${params.medicineName.replaceFirstChar { it.uppercase() }} est contre-indiqué avant ${protocol.minAgeMonths} mois. Risque de toxicité sur la croissance."
+                        "${params.medicineName.replaceFirstChar { it.uppercase() }} est contre-indiqué avant ${protocol.minAgeMonths} mois. Risque de toxicité sur la croissance."
                     else
-                        "⛔ ${params.medicineName.replaceFirstChar { it.uppercase() }} is contraindicated under ${protocol.minAgeMonths} months. Risk of growth toxicity.",
+                        "${params.medicineName.replaceFirstChar { it.uppercase() }} is contraindicated under ${protocol.minAgeMonths} months. Risk of growth toxicity.",
                     warningMessage = if (isFr) "Alerte rouge : âge insuffisant." else "Red alert: age too low.",
                     source = DosageSource.LOCAL_PROTOCOL
                 )
@@ -250,7 +266,7 @@ object DosageFunctionCalling {
                         frequencyPerDay = 0,
                         durationDays = 0,
                         specialInstructions = interaction.message,
-                        warningMessage = if (isFr) "⛔ Interaction dangereuse avec traitement actuel." else "⛔ Dangerous interaction with current treatment.",
+                        warningMessage = if (isFr) "Interaction dangereuse avec traitement actuel." else "Dangerous interaction with current treatment.",
                         source = DosageSource.LOCAL_PROTOCOL
                     )
                 }
@@ -265,9 +281,9 @@ object DosageFunctionCalling {
                 frequencyPerDay = 0,
                 durationDays = 0,
                 specialInstructions = if (interactionWarning.isNotBlank()) interactionWarning 
-                    else if (isFr) "✅ Médicament identifié. Précisez le poids pour calculer la dose (ex: 15kg)."
-                    else "✅ Drug identified. Please provide weight to calculate dose (e.g. 15kg).",
-                warningMessage = if (interactionTriage == InteractionSeverity.JAUNE) "⚠️ Interaction possible avec traitement en cours." else "",
+                    else if (isFr) "Médicament identifié. Précisez le poids pour calculer la dose (ex: 15kg)."
+                    else "Drug identified. Please provide weight to calculate dose (e.g. 15kg).",
+                warningMessage = if (interactionTriage == InteractionSeverity.JAUNE) "Interaction possible avec traitement en cours." else "",
                 source = DosageSource.INSUFFICIENT_DATA
             )
         }
@@ -304,14 +320,21 @@ object DosageFunctionCalling {
 
         // Cas spécial zinc (dose fixe selon âge)
         if (params.medicineName.lowercase() == "zinc") {
+            val ageProvided = params.patientAgeMonths != null || params.patientAgeYears != null
             val ageMonths = params.patientAgeMonths ?: ((params.patientAgeYears ?: 1.0) * 12)
+            
+            val ageWarning = if (!ageProvided) {
+                if (isFr) " Âge non précisé, dose ≥ 6 mois par défaut." 
+                else " Age not specified, defaulting to ≥ 6 months dose."
+            } else ""
+
             return DosageResult(
                 medicineName = "Zinc",
                 dosePerTake = if (ageMonths < 6) "10 mg" else "20 mg",
                 frequencyPerDay = 1,
                 durationDays = 10,
                 specialInstructions = if (isFr) protocol.instructionsFr else protocol.instructionsEn,
-                warningMessage = if (isFr) protocol.warningFr else protocol.warningEn,
+                warningMessage = (if (isFr) protocol.warningFr else protocol.warningEn) + ageWarning,
                 source = DosageSource.LOCAL_PROTOCOL
             )
         }
@@ -323,13 +346,26 @@ object DosageFunctionCalling {
                 frequencyPerDay = 0,
                 durationDays = 0,
                 specialInstructions = if (isFr)
-                    "⚠️ Poids manquant : Je ne peux pas calculer la dose sans le poids."
-                else "⚠️ Missing weight: Cannot calculate dose without weight.",
+                    "Poids manquant : Je ne peux pas calculer la dose sans le poids."
+                else "Missing weight: Cannot calculate dose without weight.",
                 warningMessage = "",
                 source = DosageSource.INSUFFICIENT_DATA
             )
         }
 
+        // Dose fixe zinc (mgPerKgPerDay = 0.0)
+        if (protocol.mgPerKgPerDay == 0.0) {
+            val fixedDose = if ((params.patientAgeMonths ?: 99.0) < 6.0) 10 else 20
+            return DosageResult(
+                medicineName = params.medicineName.replaceFirstChar { it.uppercase() },
+                dosePerTake = "$fixedDose mg",
+                frequencyPerDay = protocol.defaultFreqPerDay,
+                durationDays = protocol.defaultDurationDays,
+                specialInstructions = if (isFr) protocol.instructionsFr else protocol.instructionsEn,
+                warningMessage = if (isFr) protocol.warningFr else protocol.warningEn,
+                source = DosageSource.LOCAL_PROTOCOL
+            )
+        }
         // Calcul dose totale journalière
         val totalDayDoseMg = (weight * protocol.mgPerKgPerDay).coerceAtMost(protocol.maxDoseAdultMg)
         val dosePerTakeMg = totalDayDoseMg / protocol.defaultFreqPerDay
@@ -337,7 +373,7 @@ object DosageFunctionCalling {
         // Vérification âge minimum
         val ageMonths = params.patientAgeMonths ?: ((params.patientAgeYears ?: 99.0) * 12)
         val ageWarning = if (ageMonths < protocol.minAgeMonths && protocol.minAgeMonths > 0) {
-            if (isFr) "⚠️ Ce médicament est déconseillé avant ${protocol.minAgeMonths} mois. Consultez un médecin. " else "⚠️ Not recommended under ${protocol.minAgeMonths} months. Consult a doctor. "
+            if (isFr) "Ce médicament est déconseillé avant ${protocol.minAgeMonths} mois. Consultez un médecin. " else "Not recommended under ${protocol.minAgeMonths} months. Consult a doctor. "
         } else ""
 
         return DosageResult(
@@ -382,22 +418,43 @@ Reply ONLY with this JSON (nothing else):
 {"dose_per_take":"Xmg or Xml","frequency_per_day":N,"duration_days":N,"instructions":"instruction paragraph","warning":"warning if interaction or danger"}"""
 
         return try {
-            val rawResponse = when {
+            val res = when {
                 isOnline -> gemmaEngine.runInferenceForInteraction(dosagePrompt, isFr)
-                    .getOrDefault("")
+                else -> Result.failure(Exception("OFFLINE_OR_NETWORK_ERROR"))
+            }
 
-                LlamaEngine.isReady() -> when (val r = LlamaEngine.generateResponse(
+            if (res.isFailure) {
+                val err = res.exceptionOrNull()?.message ?: ""
+                if (err == "OFFLINE_OR_NETWORK_ERROR" || err.contains("Socket") || err.contains("abort")) {
+                    return DosageResult(
+                        medicineName = params.medicineName.replaceFirstChar { it.uppercase() },
+                        dosePerTake = "Connexion requise",
+                        frequencyPerDay = 0,
+                        durationDays = 0,
+                        specialInstructions = if (isFr)
+                            "Je ne peux pas calculer cette dose sans connexion internet pour consulter les bases de données sécurisées."
+                        else "Cannot calculate this dose without an internet connection to consult secure databases.",
+                        warningMessage = if (isFr) "Mode hors-ligne" else "Offline mode",
+                        source = DosageSource.INSUFFICIENT_DATA
+                    )
+                }
+            }
+
+            val rawResponse = res.getOrDefault("")
+            
+            // Fallback Llama si Gemini a échoué mais qu'on a Llama
+            val finalRaw = if (rawResponse.isBlank() && LlamaEngine.isReady()) {
+                when (val r = LlamaEngine.generateResponse(
                     prompt = dosagePrompt,
                     systemPrompt = if (isFr) "Tu es un médecin. Réponds UNIQUEMENT en JSON." else "You are a doctor. Reply ONLY in JSON.",
                     ragContext = ""
                 )) {
                     is LlamaResult.Success -> r.text
-                    is LlamaResult.Fallback -> ""
+                    else -> ""
                 }
+            } else rawResponse
 
-                else -> ""
-            }
-            parseDosageResponse(rawResponse, params, isFr, isOnline)
+            parseDosageResponse(finalRaw, params, isFr, isOnline)
         } catch (e: Exception) {
             Log.e(TAG, "Erreur LLM dosage: ${e.message}")
             DosageResult(
@@ -406,8 +463,8 @@ Reply ONLY with this JSON (nothing else):
                 frequencyPerDay = 0,
                 durationDays = 0,
                 specialInstructions = if (isFr)
-                    "⚠️ Erreur lors du calcul via l'IA. Veuillez vérifier votre connexion."
-                else "⚠️ AI calculation error. Please check your connection.",
+                    "Erreur lors du calcul via l'IA. Veuillez vérifier votre connexion."
+                else "AI calculation error. Please check your connection.",
                 warningMessage = "",
                 source = DosageSource.INSUFFICIENT_DATA
             )

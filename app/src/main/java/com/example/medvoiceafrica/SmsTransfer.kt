@@ -20,8 +20,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Emergency
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,13 +58,14 @@ object SmsTransferHelper {
         symptoms: String,
         dosageResult: DosageResult?,
         dosageParams: DosageParams?,
-        referredBy: String = "CSPS MedVoice"
+        referredBy: String = "CSPS MedVoice",
+        isFr: Boolean = true
     ): String {
         val triageLabel = when (triageLevel) {
-            TriageLevel.ROUGE -> "ROUGE — Urgence vitale"
-            TriageLevel.JAUNE -> "JAUNE — Consultation 24h"
-            TriageLevel.VERT  -> "VERT — Suivi a domicile"
-            else -> "Non classe"
+            TriageLevel.ROUGE -> if (isFr) "ROUGE — Urgence vitale" else "RED — Critical emergency"
+            TriageLevel.JAUNE -> if (isFr) "JAUNE — Consultation 24h" else "YELLOW — Consultation 24h"
+            TriageLevel.VERT  -> if (isFr) "VERT — Suivi à domicile" else "GREEN — Home monitoring"
+            else -> if (isFr) "Non classé" else "Unclassified"
         }
         val triageIcon = when (triageLevel) {
             TriageLevel.ROUGE -> "🔴"
@@ -68,49 +77,49 @@ object SmsTransferHelper {
         val date = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
 
         return buildString {
-            appendLine("📱 RAPPORT MEDVOICE AFRICA")
+            appendLine(if (isFr) "📱 RAPPORT MEDVOICE AFRICA" else "📱 MEDVOICE AFRICA REPORT")
             appendLine("━━━━━━━━━━━━━━━━━━━━━━━━")
-            appendLine("$triageIcon Triage : $triageLabel")
+            appendLine("$triageIcon ${if (isFr) "Triage" else "Triage"} : $triageLabel")
             appendLine()
 
             // Patient
             if (patientDesc.isNotBlank()) {
-                appendLine("👤 Patient : $patientDesc")
+                appendLine("👤 ${if (isFr) "Patient" else "Patient"} : $patientDesc")
             }
 
             // Symptômes
             if (symptoms.isNotBlank()) {
-                appendLine("🩺 Symptome : $symptoms")
+                appendLine("🩺 ${if (isFr) "Symptôme" else "Symptom"} : $symptoms")
             }
 
             // Posologie calculée
             if (dosageResult != null) {
                 appendLine()
-                appendLine("💊 Posologie conseillee :")
-                appendLine("   Medicament : ${dosageResult.medicineName}")
-                appendLine("   Dose/prise : ${dosageResult.dosePerTake}")
-                appendLine("   Frequence  : ${dosageResult.frequencyPerDay}x/jour")
-                appendLine("   Duree      : ${dosageResult.durationDays} jours")
+                appendLine(if (isFr) "💊 Posologie conseillée :" else "💊 Advised dosage:")
+                appendLine("   ${if (isFr) "Médicament" else "Medicine"} : ${dosageResult.medicineName}")
+                appendLine("   ${if (isFr) "Dose/prise" else "Dose/take"} : ${dosageResult.dosePerTake}")
+                appendLine("   ${if (isFr) "Fréquence" else "Frequency"}  : ${dosageResult.frequencyPerDay}x/${if(isFr) "jour" else "day"}")
+                appendLine("   ${if (isFr) "Durée" else "Duration"}      : ${dosageResult.durationDays} ${if(isFr) "jours" else "days"}")
                 if (dosageResult.specialInstructions.isNotBlank()) {
-                    appendLine("   Consigne   : ${dosageResult.specialInstructions}")
+                    appendLine("   ${if (isFr) "Consigne" else "Instruction"}   : ${dosageResult.specialInstructions}")
                 }
                 if (dosageResult.warningMessage.isNotBlank()) {
-                    appendLine("   ⚠️ Alerte : ${dosageResult.warningMessage}")
+                    appendLine("   ⚠️ ${if (isFr) "Alerte" else "Alert"} : ${dosageResult.warningMessage}")
                 }
                 val sourceLabel = when (dosageResult.source) {
-                    DosageSource.LOCAL_PROTOCOL -> "Protocole OMS local"
-                    DosageSource.LLM_GEMINI    -> "Calcul Gemini AI"
-                    DosageSource.LLM_LLAMA     -> "Calcul IA locale"
-                    DosageSource.INSUFFICIENT_DATA -> "Donnees incompletes"
+                    DosageSource.LOCAL_PROTOCOL -> if (isFr) "Protocole OMS local" else "Local WHO protocol"
+                    DosageSource.LLM_GEMINI    -> if (isFr) "Calcul Gemini AI" else "Gemini AI calculation"
+                    DosageSource.LLM_LLAMA     -> if (isFr) "Calcul IA locale" else "Local AI calculation"
+                    DosageSource.INSUFFICIENT_DATA -> if (isFr) "Données incomplètes" else "Incomplete data"
                 }
                 appendLine("   Source     : $sourceLabel")
             }
 
             appendLine()
             appendLine("━━━━━━━━━━━━━━━━━━━━━━━━")
-            appendLine("Refere par : $referredBy")
-            appendLine("Date : $date a $time")
-            append("MedVoice Africa — Protocoles OMS v2026")
+            appendLine("${if (isFr) "Référé par" else "Referred by"} : $referredBy")
+            appendLine("Date : $date ${if (isFr) "à" else "at"} $time")
+            append(if (isFr) "MedVoice Africa — Protocoles OMS v2026" else "MedVoice Africa — WHO Protocols v2026")
         }
     }
 
@@ -237,9 +246,9 @@ fun TransferButton(
     colors: MedVoiceColors,
     dosageResult: DosageResult? = null,      // ← NOUVEAU : injecté depuis DosageCard
     dosageParams: DosageParams? = null,      // ← NOUVEAU : pour le résumé patient
+    isFr: Boolean = Locale.getDefault().language == "fr"
 ) {
     val context = LocalContext.current
-    val isFr = Locale.getDefault().language == "fr"
     var showDialog by remember { mutableStateOf(false) }
 
     val doctorPhone = remember {
@@ -266,7 +275,12 @@ fun TransferButton(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        Text("✉", fontSize = 12.sp, color = colors.textSecondary)
+        Icon(
+            imageVector = Icons.Default.Send,
+            contentDescription = null,
+            modifier = Modifier.size(12.dp),
+            tint = colors.textSecondary
+        )
         Text(
             text = if (isFr) "Transferer le cas" else "Transfer case",
             fontSize = 11.sp,
@@ -330,7 +344,8 @@ private fun TransferConfirmDialog(
                 symptoms = symptoms,
                 dosageResult = dosageResult,
                 dosageParams = dosageParams,
-                referredBy = cspsName
+                referredBy = cspsName,
+                isFr = isFr
             )
         }
     }
@@ -359,22 +374,33 @@ private fun TransferConfirmDialog(
                 )
 
                 // ── Badge triage ──────────────────────────────────
-                val (triageText, triageColor) = when (message.triageLevel) {
-                    TriageLevel.ROUGE -> "ROUGE — Urgence vitale" to Color(0xFFE24B4A)
-                    TriageLevel.JAUNE -> "JAUNE — Consultation 24h" to Color(0xFFEF9F27)
-                    else -> "VERT — Surveillance" to Color(0xFF1D9E75)
+                val (triageText, triageColor, triageIcon) = when (message.triageLevel) {
+                    TriageLevel.ROUGE -> Triple(if (isFr) "ROUGE — Urgence vitale" else "RED — Life Threatening", Color(0xFFE24B4A), Icons.Default.Emergency)
+                    TriageLevel.JAUNE -> Triple(if (isFr) "JAUNE — Consultation 24h" else "YELLOW — 24h Consultation", Color(0xFFEF9F27), Icons.Default.Schedule)
+                    else -> Triple(if (isFr) "VERT — Surveillance" else "GREEN — Monitoring", Color(0xFF1D9E75), Icons.Default.CheckCircle)
                 }
                 Surface(
                     color = triageColor.copy(alpha = 0.15f),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text(
-                        text = "Triage : $triageText",
+                    Row(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = triageColor
-                    )
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = triageIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = triageColor
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Triage : $triageText",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = triageColor
+                        )
+                    }
                 }
 
                 // ── Posologie intégrée (si disponible) ───────────
@@ -444,15 +470,24 @@ private fun TransferConfirmDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = if (showPreview)
-                            if (isFr) "Masquer l'aperçu" else "Hide preview"
-                        else
-                            if (isFr) "👁 Voir le message complet" else "👁 Preview full message",
-                        fontSize = 12.sp,
-                        color = colors.accent,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (showPreview) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = colors.accent
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = if (showPreview)
+                                if (isFr) "Masquer l'aperçu" else "Hide preview"
+                            else
+                                if (isFr) "Voir le message complet" else "Preview full message",
+                            fontSize = 12.sp,
+                            color = colors.accent,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
 
                 if (showPreview) {
@@ -476,26 +511,24 @@ private fun TransferConfirmDialog(
 
                 // ── Boutons d'envoi ───────────────────────────────
                 // Ligne 1 : SMS (pleine largeur)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF185FA5))
-                        .clickable {
-                            SmsTransferHelper.openSmsIntent(
-                                context = context,
-                                doctorPhone = phone.ifBlank { doctorPhone },
-                                message = generatedMessage
-                            )
-                            onDismiss()
-                        }
-                        .padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center
+                Button(
+                    onClick = {
+                        SmsTransferHelper.openSmsIntent(
+                            context = context,
+                            doctorPhone = phone.ifBlank { doctorPhone },
+                            message = generatedMessage
+                        )
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF185FA5)),
+                    shape = RoundedCornerShape(10.dp)
                 ) {
+                    Icon(Icons.Default.PhoneAndroid, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        text = if (isFr) "📱 Envoyer par SMS" else "📱 Send via SMS",
+                        text = if (isFr) "Envoyer par SMS" else "Send via SMS",
                         fontSize = 14.sp,
-                        color = Color.White,
                         fontWeight = FontWeight.Bold
                     )
                 }

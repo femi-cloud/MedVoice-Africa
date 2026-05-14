@@ -65,6 +65,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -75,10 +76,14 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
 
     // Room — local database for conversation history
-    val roomVersion = "2.7.0-alpha13"
+    val roomVersion = "2.7.1"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
+
+    // LiteRT — inférence Gemma 4 on-device (llama.cpp backend)
+    implementation("com.google.mediapipe:tasks-genai:0.10.14")
+
 
     // --- CameraX (Le caméraman) ---
     val camerax_version = "1.3.1"
@@ -86,14 +91,21 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:$camerax_version")
     implementation("androidx.camera:camera-view:$camerax_version")
 
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     // --- Google ML Kit (Les experts en analyse) ---
     // Pour le scan de codes (QR, Barcode, DataMatrix)
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
     // Pour l'OCR (Reconnaissance de texte)
     implementation("com.google.mlkit:text-recognition:16.0.0")
 
+    // WorkManager — Synchronisation différée SyncManager
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+
     // FileProvider support
-    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-ktx:1.15.0") {
+        version { strictly("1.15.0") }
+    }
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")

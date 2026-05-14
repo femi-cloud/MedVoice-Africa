@@ -46,6 +46,16 @@ class GemmaEngine(private val context: Context) {
     }
     """.trimIndent()
 
+            val identityAndGreetings = if (lang == "fr") """
+1. IDENTITÉ : Tu es MedVoice Africa, une application d'assistance médicale et de santé conçue spécifiquement pour l'Afrique de l'Ouest.
+2. SALUTATIONS : Si l'utilisateur te salue simplement (ex: "bonjour", "salut"), réponds poliment en te présentant comme MedVoice Africa et demande comment tu peux aider. Pour ces messages sociaux simples, n'utilise PAS de tag de triage médical complexe, utilise [TRIAGE:VERT].
+3. MISSION : Ton but est d'aider les agents de santé et les patients avec des conseils basés sur les protocoles de l'OMS.
+""".trimIndent() else """
+1. IDENTITY: You are MedVoice Africa, a health and medical support application designed specifically for West Africa.
+2. GREETINGS: If the user simply greets you (e.g., "hello", "hi"), respond politely, introduce yourself as MedVoice Africa, and ask how you can help. For these simple social messages, do NOT use complex medical triage tags, use [TRIAGE:VERT].
+3. MISSION: Your goal is to help health workers and patients with advice based on WHO protocols.
+""".trimIndent()
+
             // ── NOUVELLES RÈGLES DE SÉCURITÉ ──
             val safetyRules = if (lang == "fr") """
 4. SÉCURITÉ INTERACTIONS : Vérifie systématiquement les traitements en cours mentionnés par l'utilisateur. 
@@ -78,15 +88,15 @@ class GemmaEngine(private val context: Context) {
 
             return if (isPublicMode) {
                 if (lang == "fr") """
-            Tu es MedVoice Africa, un conseiller de santé expert et prudent.
-            RÈGLES :
+            $identityAndGreetings
+            RÈGLES SUPPLÉMENTAIRES :
             1. $extractionRules
             2. Ton message doit être simple, rassurant et rédigé en paragraphes fluides.
             3. Ne mentionne AUCUN chiffre de dosage (mg/ml) dans ton texte, laisse le système s'en charger.
             $safetyRules
         """.trimIndent() else """
-            You are MedVoice Africa, an expert and cautious health advisor.
-            RULES:
+            $identityAndGreetings
+            ADDITIONAL RULES:
             1. $extractionRules
             2. Your message should be simple, reassuring, and written in fluid paragraphs.
             3. Do NOT mention any dosage numbers (mg/ml) in your text, let the system handle it.
@@ -95,15 +105,15 @@ class GemmaEngine(private val context: Context) {
             } else {
                 // Version Pro
                 if (lang == "fr") """
-            Tu es MedVoice Africa, assistant expert pour professionnels de santé.
-            RÈGLES :
+            $identityAndGreetings
+            RÈGLES SUPPLÉMENTAIRES :
             1. $extractionRules
             2. Utilise un langage clinique précis et structuré en paragraphes.
             3. Indique clairement que le dosage final est validé par les protocoles locaux.
             $safetyRules
         """.trimIndent() else """
-            You are MedVoice Africa, an expert assistant for healthcare professionals.
-            RULES:
+            $identityAndGreetings
+            ADDITIONAL RULES:
             1. $extractionRules
             2. Use precise clinical language structured in paragraphs.
             3. Clearly state that the final dosage is validated by local protocols.
@@ -112,14 +122,54 @@ class GemmaEngine(private val context: Context) {
             }
         }
 
+
+
+        fun buildMedicalImagePrompt(lang: String, currentMeds: List<String> = emptyList()): String {
+            val medsCtx = if (currentMeds.isNotEmpty())
+                if (lang == "fr") "\nPatient sous traitement actuel : ${currentMeds.joinToString(", ")}."
+                else "\nPatient currently takes: ${currentMeds.joinToString(", ")}."
+            else ""
+
+                    return if (lang == "fr") """
+        Tu es un assistant médical de terrain pour agents de santé communautaires (ASC) au Bénin.
+        Analyse cette image médicale et structure ta réponse OBLIGATOIREMENT ainsi :
+        
+        TYPE : [Plaie / Rash / Œdème / Brûlure / Radiographie / Médicament / Autre]
+        OBSERVATIONS : [Ce que tu vois précisément, sans jargon]
+        SIGNES D'ALERTE : [Présents ou absents — infection, nécrose, détresse...]
+        TRIAGE : [ROUGE = urgence immédiate / JAUNE = surveiller / VERT = stable]
+        ACTION IMMÉDIATE : [Ce que l'ASC doit faire maintenant, en 1-2 phrases simples]
+        RÉFÉRER AU CSPS : [Oui immédiat / Oui dans 24h / Non nécessaire]
+        $medsCtx
+        Protocoles OMS Bénin 2026. Sois précis et concis.
+        Termine OBLIGATOIREMENT par le tag : [TRIAGE:ROUGE] ou [TRIAGE:JAUNE] ou [TRIAGE:VERT] selon ta conclusion.
+                    """.trimIndent()
+                    else """
+        You are a field medical assistant for community health workers (CHW) in Benin.
+        Analyze this medical image and structure your response STRICTLY as follows:
+        
+        TYPE: [Wound / Rash / Edema / Burn / X-ray / Medication / Other]
+        OBSERVATIONS: [What you see precisely, no medical jargon]
+        WARNING SIGNS: [Present or absent — infection, necrosis, distress...]
+        TRIAGE: [RED = immediate emergency / YELLOW = monitor / GREEN = stable]
+        IMMEDIATE ACTION: [What the CHW must do now, in 1-2 simple sentences]
+        REFER TO HEALTH CENTER: [Yes immediate / Yes within 24h / Not necessary]
+        $medsCtx
+        WHO Benin 2026 protocols. Be precise and concise.
+        ALWAYS end with the tag: [TRIAGE:ROUGE] or [TRIAGE:JAUNE] or [TRIAGE:VERT] based on your conclusion.
+                    """.trimIndent()
+                }
+
+
+
         fun parseTriageLevelFromTag(response: String): TriageLevel {
             val match = Regex("\\[TRIAGE:(\\w+)\\]").find(response)
             return when (match?.groupValues?.get(1)?.uppercase()) {
                 "ROUGE" -> TriageLevel.ROUGE; "JAUNE" -> TriageLevel.JAUNE; "VERT" -> TriageLevel.VERT
                 else -> when {
-                    response.contains("ROUGE", ignoreCase = true) || response.contains("🔴") -> TriageLevel.ROUGE
-                    response.contains("JAUNE", ignoreCase = true) || response.contains("🟡") -> TriageLevel.JAUNE
-                    response.contains("VERT", ignoreCase = true)  || response.contains("🟢") -> TriageLevel.VERT
+                    response.contains("ROUGE", ignoreCase = true) -> TriageLevel.ROUGE
+                    response.contains("JAUNE", ignoreCase = true) -> TriageLevel.JAUNE
+                    response.contains("VERT", ignoreCase = true)  -> TriageLevel.VERT
                     else -> TriageLevel.UNKNOWN
                 }
             }
@@ -127,17 +177,27 @@ class GemmaEngine(private val context: Context) {
 
         fun cleanResponse(raw: String): String {
             var text = raw
+            // Nettoyer les blocs think
             text = text.replace(Regex("<thought>.*?</thought>", RegexOption.DOT_MATCHES_ALL), "")
             text = text.replace(Regex("<thinking>.*?</thinking>", RegexOption.DOT_MATCHES_ALL), "")
-            text = text.replace(Regex("<think>.*?</think>", RegexOption.DOT_MATCHES_ALL), "")
-            text = text.replace(Regex("\\[TRIAGE:\\w+\\]"), "").trim()
+            text = text.replace(Regex("<\\|think\\|>.*?</think>", RegexOption.DOT_MATCHES_ALL), "")
+            // 🔴 NE PAS effacer [TRIAGE:X] ici — le laisser pour MedOrchestrator
+            // Nettoyer seulement les artefacts parasites
+            text = text.replace("TRIAGEVERT", "").replace("TRIAGEROUGE", "").replace("TRIAGEJAUNE", "")
+            text = text.replace("TRIAGEINFO", "")
             val badPrefixes = listOf("user says", "user input", "role:", "language:", "tone:", "goal:",
                 "context:", "greeting:", "constraint:", "thinking:", "reasoning:", "self-correction")
             text = text.lines().filterNot { line ->
                 val t = line.trim()
                 (t.startsWith("*") || t.startsWith("-")) && badPrefixes.any { t.contains(it, ignoreCase = true) }
             }.joinToString("\n").trim()
-            return text.trimStart('\n', '\r').trim()
+            text = text.replace(Regex("\\[TRIAGE:\\w+\\]"), "").trim()
+            return text.trimStart('•', '-', '\n', '\r').trim()
+        }
+
+        // Nouvelle fonction pour l'affichage UI uniquement (enlève le tag pour l'utilisateur)
+        fun cleanResponseForDisplay(raw: String): String {
+            return cleanResponse(raw).replace(Regex("\\[TRIAGE:\\w+\\]"), "").trim()
         }
 
         // Génère un titre court via Gemini, SANS polluer le chatHistory
@@ -231,24 +291,34 @@ class GemmaEngine(private val context: Context) {
     private suspend fun isOnline(): Boolean = withContext(Dispatchers.IO) {
         try {
             val sock = Socket()
-            sock.connect(InetSocketAddress("generativelanguage.googleapis.com", 443), 3000)
+            sock.connect(InetSocketAddress("8.8.8.8", 53), 5000)
             sock.close(); true
         } catch (_: Exception) { false }
     }
 
     private fun detectIfFrench(text: String): Boolean {
-        val frenchKeywords = listOf("combien", "donner", "poids", "enfant", "est-ce", "ordonnance", "prendre", "puis-je", "peut-on")
-        val englishKeywords = listOf("how", "give", "weight", "child", "should", "prescription", "take", "can i", "can we")
+        val frenchKeywords = listOf(
+            "combien", "donner", "poids", "enfant", "est-ce", "ordonnance", "prendre", "puis-je", "peut-on",
+            "médicament", "posologie", "bébé", "dose", "matin", "soir", "jour", "fois"
+        )
+        val englishKeywords = listOf(
+            "how", "give", "weight", "child", "should", "prescription", "take", "can i", "can we",
+            "medicine", "dosage", "baby", "dose", "morning", "evening", "day", "times"
+        )
 
         val frCount = frenchKeywords.count { text.contains(it, ignoreCase = true) }
         val enCount = englishKeywords.count { text.contains(it, ignoreCase = true) }
 
-        return if (frCount == 0 && enCount == 0) {
-            Locale.getDefault().language == "fr" // Fallback
-        } else frCount >= enCount
+        return if (frCount == enCount) {
+            Locale.getDefault().language == "fr"
+        } else frCount > enCount
     }
 
-    suspend fun runInference(userMessage: String, imageBitmap: Bitmap? = null): Result<String> =
+    suspend fun runInference(
+        userMessage: String,
+        imageBitmap: Bitmap? = null,
+        currentMeds: List<String> = emptyList()
+    ): Result<String> =
         withContext(Dispatchers.IO) {
             val isInputFr = detectIfFrench(userMessage)
             val lang = if (isInputFr) "fr" else "en"
@@ -256,25 +326,81 @@ class GemmaEngine(private val context: Context) {
             // RAG: find relevant protocols BEFORE trying network (needed for offline too)
             val relevantProtocols = ragEngine.findRelevant(userMessage)
             val ragContext = RagEngine.buildContext(relevantProtocols, lang)
+            val online = isOnline()
+
             if (relevantProtocols.isNotEmpty())
                 Log.d(TAG, "RAG: injecting ${relevantProtocols.size} protocol(s): ${relevantProtocols.map { it.title }}")
 
-            // Build user message parts
-            val partsArray = JSONArray().apply {
-                put(JSONObject().put("text", userMessage))
-                if (imageBitmap != null) put(JSONObject().apply {
-                    put("inline_data", JSONObject().apply {
-                        put("mime_type", "image/jpeg"); put("data", encodeBitmapToBase64(imageBitmap))
-                    })
-                })
-            }
-            chatHistory.add(JSONObject().apply { put("role", "user"); put("parts", partsArray) })
-            enforceMemoryLimit()
 
             // Fast offline check
             if (!isOnline()) {
-                chatHistory.removeLastOrNull()
-                // Gemini recommendation: frame as "Safety Mode" not just an error
+
+                // 1. Essayer LlamaEngine si disponible
+                if (LlamaEngine.isReady()) {
+                    val llamaResult = LlamaEngine.generateResponse(userMessage, buildSystemPrompt(lang, true), ragContext)
+                    return@withContext when (llamaResult) {
+                        is LlamaResult.Success -> {
+                            val cleaned = cleanResponse(llamaResult.text)
+                            chatHistory.add(JSONObject().apply {
+                                put("role", "model"); put("parts", JSONArray().apply { put(JSONObject().put("text", cleaned)) })
+                            })
+                            Result.success(llamaResult.text)
+                        }
+                        is LlamaResult.Fallback -> Result.success("${llamaResult.offlineText}TRIAGEINFO")
+                    }
+                }
+
+                // 2. NOUVEAU — Chercher dans OmsProtocolDatabase SQLite directement
+                val db = AppDatabase.getInstance(context)
+                val lowerQuery = userMessage.lowercase()
+                val omsResult = db.omsProtocolDao().searchProtocols("%$lowerQuery%")
+                if (omsResult.isNotEmpty()) {
+                    val first = omsResult.first()
+
+                    if (omsResult.isNotEmpty()) {
+                        val first = omsResult.first()
+                        val inferredTriage = when {
+                            first.protocol.contains("urgence", ignoreCase = true) ||
+                                    first.protocol.contains("transfert", ignoreCase = true) -> "TRIAGEROUGE"
+                            first.protocol.contains("consultation", ignoreCase = true) ||
+                                    first.protocol.contains("24h", ignoreCase = true) -> "TRIAGEJAUNE"
+                            else -> "TRIAGEVERT"
+                        }
+                        val intro = if (lang == "fr")
+                            "D'après les protocoles OMS locaux :"
+                        else
+                            "Based on local WHO protocols:"
+
+                        val formatted = omsResult.take(1).filter { it.protocol.length > 50 }.joinToString("\n\n") { proto ->
+                            buildString {
+                                append("📋 **${proto.title}**\n")
+                                proto.protocol
+                                    .replace(Regex("\\s+"), " ")
+                                    .split(Regex("(?<=[.!?])\\s+"))
+                                    .filter { it.length > 10 }
+                                    .take(4)
+                                    .forEach { append("• $it\n") }
+                            }
+                        }
+                        val omsMsg = "$inferredTriage\n$intro\n\n$formatted"
+                        return@withContext Result.success(omsMsg)
+                    }
+
+                }
+
+                // Détection salutation hors-ligne
+                val isSocialMessage = listOf("bonjour", "bonsoir", "salut", "hello", "hi", "good morning")
+                    .any { userMessage.lowercase().contains(it) }
+                if (isSocialMessage) {
+                    return@withContext Result.success(
+                        if (lang == "fr")
+                            "Bonjour ! Je suis MedVoice Africa, votre assistant médical. Je fonctionne actuellement en mode hors-ligne. Décrivez un symptôme ou un médicament et je ferai de mon mieux pour vous aider avec les protocoles OMS disponibles localement.\nTRIAGEVERT"
+                        else
+                            "Hello! I'm MedVoice Africa, your medical assistant. I'm currently running offline. Describe a symptom or medication and I'll help you with locally available WHO protocols.\nTRIAGEVERT"
+                    )
+                }
+
+                // 3. Fallback RAG JSON existant
                 val offlineMsg = if (lang == "fr")
                     "**Mode Sécurité Hors-ligne**\n\nL'assistant IA est inaccessible. D'après vos mots-clés, voici les protocoles d'urgence correspondants issus de notre base de données locale. Lisez attentivement la section correspondant à votre niveau de gravité :\n\n${
                         if (ragContext.isNotBlank()) ragContext
@@ -285,8 +411,28 @@ class GemmaEngine(private val context: Context) {
                         if (ragContext.isNotBlank()) ragContext
                         else "Describe a specific symptom (e.g. fever, cough, diarrhea) to access offline WHO protocols."
                     }"
-                return@withContext Result.success("$offlineMsg\n[TRIAGE:INFO]")
+                return@withContext Result.success(offlineMsg + "TRIAGEINFO")
             }
+
+            // ─── En ligne : maintenant on encode l'image et on appelle Gemini ───
+            val effectiveTextPrompt = if (imageBitmap != null) {
+                val imagePrompt = buildMedicalImagePrompt(lang, currentMeds)
+                if (userMessage.isNotBlank()) "$imagePrompt\n\nUser note: $userMessage" else imagePrompt
+            } else userMessage
+
+            val partsArray = JSONArray().apply {
+                put(JSONObject().put("text", effectiveTextPrompt))
+                if (imageBitmap != null) {
+                    put(JSONObject().apply {
+                        put("inlineData", JSONObject().apply {
+                            put("mimeType", "image/jpeg")
+                            put("data", encodeBitmapToBase64(imageBitmap))
+                        })
+                    })
+                }
+            }
+            chatHistory.add(JSONObject().apply { put("role", "user"); put("parts", partsArray) })
+            enforceMemoryLimit()
 
             return@withContext try {
                 val url = URL("$BASE_URL?key=$apiKey")
@@ -294,8 +440,8 @@ class GemmaEngine(private val context: Context) {
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
-                conn.connectTimeout = 8_000
-                conn.readTimeout = 60_000
+                conn.connectTimeout = 15_000
+                conn.readTimeout = if (imageBitmap != null) 120_000 else 90_000
 
                 val body = JSONObject().apply {
                     put("system_instruction", JSONObject().apply {
@@ -345,11 +491,17 @@ class GemmaEngine(private val context: Context) {
             } catch (e: Exception) {
                 Log.e(TAG, "Error: ${e.javaClass.simpleName}: ${e.message}")
                 chatHistory.removeLastOrNull()
-                if (e is java.net.UnknownHostException || e is java.net.ConnectException || e is java.net.SocketTimeoutException) {
+                val isNetworkError = e is java.net.UnknownHostException || 
+                                     e is java.net.ConnectException || 
+                                     e is java.net.SocketTimeoutException || 
+                                     e is java.net.SocketException ||
+                                     e.message?.contains("Software caused connection abort", ignoreCase = true) == true
+
+                if (isNetworkError) {
                     val msg = if (lang == "fr")
-                        "⚠️ **Mode Sécurité Hors-ligne**\n\nL'assistant IA est inaccessible.${if (ragContext.isNotBlank()) "\n\n$ragContext" else "\n\nVeuillez vous connecter à internet."}"
+                        "⚠️ **Mode Sécurité Hors-ligne**\n\nL'assistant IA est inaccessible. Je bascule sur les protocoles locaux.${if (ragContext.isNotBlank()) "\n\n$ragContext" else "\n\nVeuillez vérifier votre connexion internet."}"
                     else
-                        "⚠️ **Offline Safety Mode**\n\nAI assistant unreachable.${if (ragContext.isNotBlank()) "\n\n$ragContext" else "\n\nPlease connect to the internet."}"
+                        "⚠️ **Offline Safety Mode**\n\nAI assistant unreachable. Switching to local protocols.${if (ragContext.isNotBlank()) "\n\n$ragContext" else "\n\nPlease check your internet connection."}"
                     Result.success("$msg\n[TRIAGE:INFO]")
                 } else Result.failure(Exception("${e.javaClass.simpleName}: ${e.message}"))
             }
@@ -357,54 +509,83 @@ class GemmaEngine(private val context: Context) {
 
     // ── runInferenceForInteraction ──────────────────
     // Appel Gemini one-shot pour interactions et dosages (sans polluer chatHistory)
+// ── Appel Gemini one-shot pour interactions/dosages — NE pollue PAS chatHistory ──
     suspend fun runInferenceForInteraction(prompt: String, isFr: Boolean): Result<String> =
         withContext(Dispatchers.IO) {
             if (apiKey.isBlank()) return@withContext Result.failure(IllegalStateException("No API key"))
             if (!isOnline()) return@withContext Result.failure(Exception("Offline"))
             return@withContext try {
                 val url = URL("$BASE_URL?key=$apiKey")
-                val conn = url.openConnection() as java.net.HttpURLConnection
+                val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
-                conn.connectTimeout = 8_000
-                conn.readTimeout = 20_000
+                conn.connectTimeout = 8000
+                conn.readTimeout = 20000
+
                 val sysPrompt = if (isFr)
-                    "Tu es un pharmacologue expert. Reponds UNIQUEMENT en JSON valide, rien d'autre."
+                    "Tu es un pharmacologue expert. Réponds UNIQUEMENT en JSON valide, rien d'autre."
                 else
                     "You are an expert pharmacologist. Reply ONLY in valid JSON, nothing else."
-                val body = org.json.JSONObject().apply {
-                    put("system_instruction", org.json.JSONObject().apply {
-                        put("parts", org.json.JSONArray().apply {
-                            put(org.json.JSONObject().put("text", sysPrompt))
+
+                val body = JSONObject().apply {
+                    put("system_instruction", JSONObject().apply {
+                        put("parts", JSONArray().apply {
+                            put(JSONObject().put("text", sysPrompt))
                         })
                     })
-                    put("contents", org.json.JSONArray().apply {
-                        put(org.json.JSONObject().apply {
+                    put("contents", JSONArray().apply {
+                        put(JSONObject().apply {
                             put("role", "user")
-                            put("parts", org.json.JSONArray().apply {
-                                put(org.json.JSONObject().put("text", prompt))
+                            put("parts", JSONArray().apply {
+                                put(JSONObject().put("text", prompt))
                             })
                         })
                     })
-                    put("generationConfig", org.json.JSONObject().apply {
-                        put("maxOutputTokens", 200)
-                        put("temperature", 0.1) // Tres deterministe pour les donnees medicales
+                    put("generationConfig", JSONObject().apply {
+                        put("maxOutputTokens", 1024)
+                        put("temperature", 0.1)
                     })
                 }
+
                 conn.outputStream.use { it.write(body.toString().toByteArray()) }
-                if (conn.responseCode != 200) return@withContext Result.failure(Exception("API ${conn.responseCode}"))
-                val raw = java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream)).use { it.readText() }
-                val json = org.json.JSONObject(raw)
-                val text = json.getJSONArray("candidates").getJSONObject(0)
-                    .getJSONObject("content").getJSONArray("parts")
-                    .getJSONObject(0).getString("text")
+                if (conn.responseCode != 200)
+                    return@withContext Result.failure(Exception("API ${conn.responseCode}"))
+
+                val raw = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
+                val json = JSONObject(raw)
+                val text = json.getJSONArray("candidates")
+                    .getJSONObject(0)
+                    .getJSONObject("content")
+                    .getJSONArray("parts")
+                    .getJSONObject(0)
+                    .getString("text")
                 Result.success(text.trim())
             } catch (e: Exception) {
                 Log.e(TAG, "runInferenceForInteraction error: ${e.message}")
+                val isNetworkError = e is java.net.UnknownHostException || 
+                                     e is java.net.ConnectException || 
+                                     e is java.net.SocketTimeoutException ||
+                                     e is java.net.SocketException ||
+                                     e.message?.contains("Software caused connection abort", ignoreCase = true) == true
+                
+                if (isNetworkError) {
+                    return@withContext Result.failure(Exception("OFFLINE_OR_NETWORK_ERROR"))
+                }
                 Result.failure(e)
             }
         }
+
+    fun removeLastMedicationContext(medName: String) {
+        chatHistory.removeAll { msg ->
+            val text = msg.optJSONArray("parts")
+                ?.optJSONObject(0)
+                ?.optString("text") ?: ""
+            text.contains(medName, ignoreCase = true) &&
+                    msg.optString("role") == "user"
+        }
+        saveHistory()
+    }
 
     fun parseTriageLevel(response: String) = parseTriageLevelFromTag(response)
     fun isInitialized() = apiKey.isNotBlank()

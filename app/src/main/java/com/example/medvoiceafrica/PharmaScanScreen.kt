@@ -27,6 +27,13 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import com.google.accompanist.permissions.rememberPermissionState
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -74,6 +81,7 @@ class PharmaAnalyzer(
 data class ScanData(val barcode: String, val ocrText: String)
 
 // ─── L'INTERFACE PRINCIPALE ───────────────────────────────────────
+@kotlin.OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun PharmaScanScreen(
     gemmaEngine: GemmaEngine,
@@ -93,6 +101,21 @@ fun PharmaScanScreen(
     var isAnalyzing by remember { mutableStateOf(false) }
     var scanStatus by remember { mutableStateOf(if (isFr) "Placez le médicament dans le cadre" else "Place the medication in the frame") }
     var hasScanned by remember { mutableStateOf(false) }
+    var scanAttempts by remember { mutableStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        while (!hasScanned) {
+            delay(10000L) // Toutes les 10 secondes si aucun scan réussi
+            if (!hasScanned && !isAnalyzing) {
+                scanAttempts++
+                if (scanAttempts >= 2) {
+                    scanStatus = if (isFr) 
+                        "Scan difficile ? Essayez de mieux éclairer le médicament." 
+                      else "Difficult scan? Try better lighting."
+                }
+            }
+        }
+    }
 
     val cameraController = remember {
         LifecycleCameraController(context).apply {
@@ -119,13 +142,14 @@ fun PharmaScanScreen(
         Log.d("PharmaScan", "Scan reçu — Barcode: '${data.barcode}', OCR: '${data.ocrText.take(80)}'")
 
         withContext(Dispatchers.IO) {
+            var interactionResult: InteractionResult? = null
             try {
                 val moleculeName = DrugInteractionEngine.extractMoleculeName(
                     data.ocrText + " " + data.barcode
                 )
 
                 // Étape 1 : Vérification interactions
-                val interactionResult = DrugInteractionEngine.checkInteraction(
+                val result = DrugInteractionEngine.checkInteraction(
                     scannedText = data.ocrText,
                     scannedBarcode = data.barcode,
                     currentMeds = currentMedications,
@@ -133,9 +157,10 @@ fun PharmaScanScreen(
                     isOnline = isOnline,
                     isFr = isFr
                 )
+                interactionResult = result
 
                 withContext(Dispatchers.Main) {
-                    when (interactionResult.severity) {
+                    when (result.severity) {
                         InteractionSeverity.ROUGE -> {
                             scanStatus = if (isFr) "INTERACTION DANGEREUSE" else "DANGEROUS INTERACTION"
                             onInteractionFound(interactionResult, moleculeName)
@@ -149,11 +174,12 @@ fun PharmaScanScreen(
                             onInteractionFound(interactionResult, moleculeName)
                         }
                         InteractionSeverity.UNKNOWN -> {
-                            val prompt = if (isFr)
-                                "Analyse ce medicament. Molecule: $moleculeName. Texte: ${data.ocrText.take(200)}"
-                            else
-                                "Analyze this medication. Molecule: $moleculeName. Text: ${data.ocrText.take(200)}"
-                            withContext(Dispatchers.Main) { onScanDetected(data.barcode, prompt) }
+                            // Ne pas fermer en offline — afficher le texte OCR dans le chat
+                            scanStatus = if (isFr) "Scan terminé — analyse hors-ligne" else "Scan done — offline analysis"
+                            withContext(Dispatchers.Main) {
+                                onScanDetected(data.barcode, data.ocrText)
+                                // NE PAS appeler onClose() ici — laisser l'utilisateur rescanner
+                            }
                         }
                     }
                 }
@@ -186,26 +212,49 @@ fun PharmaScanScreen(
             } finally {
                 withContext(Dispatchers.Main) {
                     isAnalyzing = false
-                    delay(3000L)
-                    onClose()
+                    // Fermeture automatique après succès ou scan non reconnu (pour passer au chat)
+                    val shouldClose = (interactionResult != null && interactionResult.severity != InteractionSeverity.UNKNOWN) || 
+                                     (scanData != null && interactionResult?.severity == InteractionSeverity.UNKNOWN)
+                    
+                    if (shouldClose) {
+                        delay(2500L)
+                        onClose()
+                    }
                 }
             }
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    @OptIn(ExperimentalPermissionsApi::class)
+    val cameraPermission = rememberPermissionState(android.Manifest.permission.CAMERA)
 
+    LaunchedEffect(Unit) {
+        if (!cameraPermission.status.isGranted) {
+            cameraPermission.launchPermissionRequest()
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (cameraPermission.status.isGranted) {
         AndroidView(
             factory = { ctx ->
-                PreviewView(ctx).apply {
-                    controller = cameraController
+                PreviewView(ctx).also { previewView ->
+                    previewView.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                    previewView.scaleType = PreviewView.ScaleType.FILL_CENTER
                     cameraController.bindToLifecycle(lifecycleOwner)
+                    previewView.controller = cameraController
                 }
             },
             modifier = Modifier.fillMaxSize()
         )
 
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)))
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Permission caméra requise", color = Color.White)
+            }
+        }
+        // Overlay semi-transparent pour la lisibilité de l'UI (pas fond noir opaque)
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
 
         // Viseur
         Box(
@@ -266,7 +315,12 @@ fun PharmaScanScreen(
                 .padding(8.dp)
                 .clickable { onClose() }
         ) {
-            Text("X", color = Color.White, fontSize = 16.sp)
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Fermer",
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
+            )
         }
 
         // Bouton rescanner

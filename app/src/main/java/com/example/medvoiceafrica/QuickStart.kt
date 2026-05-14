@@ -29,8 +29,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,8 +42,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.ui.graphics.vector.ImageVector
+
 data class QuickAction(
-    val icon: String,
+    val icon: ImageVector,
     val title: String,
     val subtitle: String,
     val action: String,     // texte envoyé directement comme message
@@ -58,42 +67,42 @@ fun QuickStartButtons(
 
     val actions = if (isFr) listOf(
         QuickAction(
-            icon = "📷",
+            icon = Icons.Default.Search,
             title = "Analyser une lésion cutanée",
             subtitle = "Photo + description",
             action = "",
             prefill = "Analyser une lésion cutanée : "
         ),
         QuickAction(
-            icon = "🎤",
+            icon = Icons.Default.Mic,
             title = "Décrire des symptômes",
             subtitle = "Vocal ou texte libre",
             action = "",
             prefill = "Le patient présente les symptômes suivants : "
         ),
         QuickAction(
-            icon = "🌡",
+            icon = Icons.Default.Info,
             title = "Évaluer une fièvre enfant",
             subtitle = "Triage pédiatrique guidé",
             action = "Évaluer la fièvre d'un enfant. Donne-moi le protocole de triage pédiatrique OMS étape par étape."
         )
     ) else listOf(
         QuickAction(
-            icon = "📷",
+            icon = Icons.Default.Search,
             title = "Analyze skin lesion",
             subtitle = "Photo + description",
             action = "",
             prefill = "Analyze skin lesion: "
         ),
         QuickAction(
-            icon = "🎤",
+            icon = Icons.Default.Mic,
             title = "Describe symptoms",
             subtitle = "Voice or free text",
             action = "",
             prefill = "The patient presents the following symptoms: "
         ),
         QuickAction(
-            icon = "🌡",
+            icon = Icons.Default.Info,
             title = "Evaluate child fever",
             subtitle = "Guided pediatric triage",
             action = "Evaluate a child's fever. Give me the WHO pediatric triage protocol step by step."
@@ -137,7 +146,12 @@ fun QuickStartButtons(
                         .background(iconBgColors.getOrElse(i) { colors.bgPrimary }),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(action.icon, fontSize = 16.sp)
+                    Icon(
+                        imageVector = action.icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = Color.White
+                    )
                 }
                 Column(Modifier.weight(1f)) {
                     Text(

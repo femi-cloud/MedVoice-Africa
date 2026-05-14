@@ -125,6 +125,13 @@ fun StatusChip(
         else -> if (isFr) "Hors ligne" else "Offline"
     }
 
+    val llamaStatus = when (LlamaEngine.state) {
+        is LlamaState.Ready -> "🧠 IA locale"
+        is LlamaState.Loading -> "⏳ Chargement..."
+        is LlamaState.Failed -> "☁️ Cloud only"
+        else -> ""
+    }
+
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = colors.bgSecondary,

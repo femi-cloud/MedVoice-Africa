@@ -31,6 +31,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.SlowMotionVideo
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.PhoneAndroid
+
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import java.util.Locale
@@ -48,10 +58,18 @@ class SettingsActivity : ComponentActivity() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 ttsReadyState.value = true
-                val voices = tts?.voices
+                val allVoices = tts?.voices
                     ?.filter { it.locale.language in listOf("fr", "en") && !it.isNetworkConnectionRequired }
-                    ?.sortedWith(compareBy({ it.locale.language }, { it.name }))
                     ?: emptyList()
+
+                val frVoices = allVoices.filter { it.locale.language == "fr" }
+                    .sortedByDescending { it.quality }
+                    .take(3)  // Max 3 voix FR
+                val enVoices = allVoices.filter { it.locale.language == "en" }
+                    .sortedByDescending { it.quality }
+                    .take(2)  // Max 2 voix EN
+
+                val voices = frVoices + enVoices
                 voicesState.value = voices
             }
         }
@@ -68,6 +86,10 @@ class SettingsActivity : ComponentActivity() {
             var dataSaver by remember { mutableStateOf(prefs.getBoolean("data_saver", false)) }
             var doctorPhone by remember { mutableStateOf(prefs.getString("doctor_phone", "") ?: "") }
             var cspsName by remember { mutableStateOf(prefs.getString("csps_name", "") ?: "") }
+
+            var hfApiKey by remember {
+                mutableStateOf(prefs.getString("hf_api_key", "") ?: "")
+            }
 
             val voices by voicesState
             val ttsReady by ttsReadyState
@@ -100,6 +122,7 @@ class SettingsActivity : ComponentActivity() {
                     .putBoolean("data_saver", dataSaver)
                     .putString("doctor_phone", doctorPhone)
                     .putString("csps_name", cspsName)
+                    .putString("hf_api_key", hfApiKey)
                     .apply()
             }
 
@@ -116,7 +139,12 @@ class SettingsActivity : ComponentActivity() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(onClick = { finish() }) {
-                            Text("←", fontSize = 20.sp, color = if (isDark) Color(0xFF888780) else Color(0xFF444441))
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = if (isFr) "Retour" else "Back",
+                                tint = if (isDark) Color(0xFF888780) else Color(0xFF444441),
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                         Spacer(Modifier.width(4.dp))
                         Text(if (isFr) "Paramètres" else "Settings",
@@ -185,23 +213,41 @@ class SettingsActivity : ComponentActivity() {
                                 }
                                 Spacer(Modifier.height(12.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    listOf("dark" to (if (isFr) "🌙 Sombre" else "🌙 Dark"),
-                                        "light" to (if (isFr) "☀️ Clair" else "☀️ Light"),
-                                        "system" to (if (isFr) "📱 Système" else "📱 System"))
-                                        .forEach { (value, label) ->
-                                            val selected = theme == value
-                                            Surface(
-                                                color = if (selected) colors.accent else colors.bgInput,
-                                                shape = RoundedCornerShape(20.dp),
-                                                modifier = Modifier.weight(1f).clickable { theme = value; save() }
+                                    listOf(
+                                        "dark"   to Pair(Icons.Default.DarkMode,    if (isFr) "Sombre" else "Dark"),
+                                        "light"  to Pair(Icons.Default.LightMode,   if (isFr) "Clair"  else "Light"),
+                                        "system" to Pair(Icons.Default.PhoneAndroid, if (isFr) "Système" else "System")
+                                    ).forEach { (value, iconLabel) ->
+                                        val (icon, label) = iconLabel
+                                        val selected = theme == value
+                                        Surface(
+                                            color = if (selected) colors.accent else colors.bgInput,
+                                            shape = RoundedCornerShape(20.dp),
+                                            modifier = Modifier.weight(1f).clickable { theme = value; save() }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .padding(horizontal = 6.dp, vertical = 8.dp)
+                                                    .fillMaxWidth()
+                                                    .wrapContentWidth(Alignment.CenterHorizontally),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                                             ) {
-                                                Text(label, fontSize = 12.sp,
+                                                Icon(
+                                                    imageVector = icon,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(13.dp),
+                                                    tint = if (selected) Color.White else colors.textSecondary
+                                                )
+                                                Text(
+                                                    label,
+                                                    fontSize = 12.sp,
                                                     color = if (selected) Color.White else colors.textSecondary,
-                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)
-                                                        .fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally))
+                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                                )
                                             }
                                         }
+                                    }
                                 }
                             }
                         }
@@ -228,7 +274,8 @@ class SettingsActivity : ComponentActivity() {
                                 Text(if (isFr) "Vitesse" else "Speed", color = colors.textSecondary, fontSize = 12.sp)
                                 Spacer(Modifier.height(4.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("🐢", fontSize = 14.sp)
+                                    Icon(Icons.Default.SlowMotionVideo, contentDescription = null,
+                                        modifier = Modifier.size(16.dp), tint = colors.textSecondary)
                                     Slider(
                                         value = ttsSpeed, onValueChange = { ttsSpeed = it; save() },
                                         valueRange = 0.5f..2.0f,
@@ -236,7 +283,8 @@ class SettingsActivity : ComponentActivity() {
                                             inactiveTrackColor = colors.bgInput),
                                         modifier = Modifier.weight(1f).padding(horizontal = 6.dp)
                                     )
-                                    Text("🐇", fontSize = 14.sp)
+                                    Icon(Icons.Default.Speed, contentDescription = null,
+                                        modifier = Modifier.size(16.dp), tint = colors.textSecondary)
                                     Spacer(Modifier.width(8.dp))
                                     Text("${(ttsSpeed * 100).toInt()}%", color = colors.textSecondary, fontSize = 12.sp,
                                         modifier = Modifier.width(40.dp))
@@ -420,8 +468,8 @@ class SettingsActivity : ComponentActivity() {
                                     "IA" to "Gemma 4 (Google DeepMind)",
                                     "RAG" to "Protocoles OMS — 10 modules",
                                     "Hackathon" to "Gemma 4 Good — Kaggle 2026",
-                                    if (isFr) "Cible" to "Agents de santé ruraux, Bénin"
-                                    else "Target" to "Rural health workers, Benin"
+                                    if (isFr) "Cible" to "Agents de santé & autres, Bénin"
+                                    else "Target" to "Rural health workers & more, Benin"
                                 ).forEach { (label, value) ->
                                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
                                         Text(label, color = colors.textSecondary, fontSize = 13.sp, modifier = Modifier.weight(1f))
@@ -458,3 +506,4 @@ class SettingsActivity : ComponentActivity() {
     HorizontalDivider(color = colors.divider, thickness = 0.5.dp)
     Spacer(Modifier.height(12.dp))
 }
+

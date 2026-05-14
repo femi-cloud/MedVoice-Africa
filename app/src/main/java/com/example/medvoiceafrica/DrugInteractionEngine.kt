@@ -272,7 +272,7 @@ Reply ONLY with this JSON format (nothing else):
     ): InteractionResult {
         return try {
             // Extraire le JSON même si le LLM a ajouté du texte autour
-            val jsonMatch = Regex("""\{[^}]+\}""").find(raw)?.value ?: ""
+            val jsonMatch = Regex("""\{.*?\}""", RegexOption.DOT_MATCHES_ALL).find(raw)?.value ?: ""
             val severityMatch = Regex("\"severity\"\\s*:\\s*\"(ROUGE|JAUNE|VERT)\"").find(jsonMatch)?.groupValues?.get(1)
             val messageMatch = Regex("\"message\"\\s*:\\s*\"([^\"]+)\"").find(jsonMatch)?.groupValues?.get(1)
 
@@ -326,10 +326,19 @@ Reply ONLY with this JSON format (nothing else):
         }
 
         // 5. Fallback intelligent : filtrer les mots "bruit" pour éviter le bug "enfant"
-        val noiseWords = listOf("enfant", "bebe", "poids", "kilos", "matin", "midi", "soir", "donner")
+        val noiseWords = listOf(
+            "enfant", "bebe", "poids", "kilos", "matin", "midi", "soir", "donner",
+            "personne", "patient", "bonjour", "salut", "pouvez", "voulez", "merci",
+            "comment", "quelle", "quand", "depuis", "prendre", "aller", "faire",
+            "have", "take", "give", "tell", "what", "when", "how", "please",
+            "hello", "help", "need", "want", "symptom", "conseil", "aider",
+            "weighs", "weight", "years", "old", "year", "kilo", "kg", "months", "month", "mois", "days", "day", "an",
+            "reponse", "identifie", "reconnu", "precisez", "calculer", "dose", "posologie", "recommande", "attention",
+            "identified", "recognized", "specify", "calculate", "dosage", "recommended", "warning", "please", "provide"
+        )
 
         return cleanedForSearch.split(Regex("\\s+"))
-            .filter { it.length > 4 } // Doit être assez long
+            .filter { it.length >= 4 } // Doit être assez long
             .filter { it !in noiseWords } // Ne doit pas être un mot de structure
             .firstOrNull() ?: ""
     }

@@ -22,6 +22,9 @@ interface OmsProtocolDao {
     @Query("SELECT * FROM oms_protocols")
     suspend fun getAll(): List<OmsProtocol>
 
+    @Query("SELECT * FROM oms_protocols WHERE keywords LIKE :query OR title LIKE :query LIMIT 1")
+    suspend fun searchProtocols(query: String): List<OmsProtocol>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(protocols: List<OmsProtocol>)
 

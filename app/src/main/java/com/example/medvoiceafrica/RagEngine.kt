@@ -73,10 +73,10 @@ class RagEngine(private val context: Context) {
         fun buildContext(protocols: List<OmsProtocol>, lang: String): String {
             if (protocols.isEmpty()) return ""
             val header = if (lang == "fr")
-                "=== PROTOCOLES OMS (Base locale — utilise ces informations OBLIGATOIREMENT pour ta réponse) ==="
+                "PROTOCOLES OMS (Base locale)"
             else
-                "=== WHO PROTOCOLS (Local knowledge base — MANDATORY: use this information in your response) ==="
-            val footer = if (lang == "fr") "=== FIN DES PROTOCOLES ===" else "=== END OF PROTOCOLS ==="
+                "WHO PROTOCOLS (Local knowledge base)"
+            val footer = if (lang == "fr") "FIN DES PROTOCOLES" else "END OF PROTOCOLS"
             return buildString {
                 appendLine(header)
                 protocols.forEach { p -> appendLine(); appendLine("--- ${p.title.uppercase()} ---"); appendLine(p.protocol.trim()) }
