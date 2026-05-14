@@ -7,10 +7,12 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-purple.svg)](https://kotlinlang.org)
 [![Model](https://img.shields.io/badge/LLM-Gemma%204%20-orange.svg)](https://ai.google.dev/gemma)
 [![Status](https://img.shields.io/badge/Status-Hackathon%20Build-yellow.svg)]()
+[![Model](https://img.shields.io/badge/HuggingFace-Fysna/medvoice_final_v2-yellow)](https://huggingface.co/Fysna/medvoice_final_v2)
+
 
 > **An offline-first, multimodal AI medical assistant powered by Gemma 4, built to bridge the deadly gap between symptom onset and professional care in rural Africa.**
 
-[Features](#-features) · [Architecture](#-architecture) · [Setup](#%EF%B8%8F-installation--setup) · [Screenshots](#-screenshots) · [Roadmap](#-roadmap)
+[Features](#What-it-does) · [Architecture](#%EF%B8%8F-architecture) · [Setup](#%EF%B8%8F-installation--setup) · [Screenshots](#-screenshots) · [Roadmap](#-roadmap)
 
 </div>
 
@@ -31,7 +33,7 @@ The result: preventable deaths from treatable conditions like malaria, diarrhea,
 
 ## 💡 The Solution
 
-**MedVoice Africa** is an edge-AI agent that runs entirely on a mid-range Android phone, **with or without internet**. It puts a trained medical reasoning engine in the hands of every community health worker, anywhere.
+**MedVoice Africa** is an edge-AI agent that runs entirely on a mid-range Android phone, **with or without internet**. It puts a trained medical reasoning engine in the hands of every person within the West African community and every community health worker, anywhere.
 
 ```
 No WiFi. No server. No problem.
@@ -126,7 +128,9 @@ User message
 
 ## 🛠️ Installation & Setup
 
-> **Note:** Model weights are not hosted on GitHub due to file size limits.
+> Download the GGUF model from HuggingFace: [Fysna/medvoice_final_v2](https://huggingface.co/Fysna/medvoice_final_v2)
+> File: `medvoice_final_v2.gguf` (~3.4 GB)
+> Place it in `/storage/emulated/0/Download/`
 
 ### Prerequisites
 
@@ -149,14 +153,12 @@ Create or edit `local.properties` at the project root:
 GEMINI_API_KEY=your_api_key_here
 ```
 
-> ⚠️ Never commit this file. It is already in `.gitignore`.
-
 ### 3. (Optional) Enable local offline model
 
 For full offline AI capability, download the GGUF model and place it in your device's Downloads folder:
 
 ```
-/storage/emulated/0/Download/medvoice_final.gguf
+/storage/emulated/0/Download/medvoice_final_v2.gguf
 ```
 
 The app detects RAM automatically:
@@ -227,7 +229,7 @@ app/src/main/
 - [x] Fon language emergency responses
 - [x] SMS + WhatsApp case transfer
 - [x] Session history + epidemiological log
-- [ ] Whisper.cpp local STT integration
+- [x] Whisper.cpp local STT integration
 - [ ] Piper local TTS (Fon voice)
 - [ ] Skin/eye condition visual analysis (MediaPipe)
 - [ ] Multi-user / CSPS network sync
@@ -263,7 +265,7 @@ Please open an issue before submitting a large PR.
 
 ```
 Copyright 2026 MedVoice Africa Contributors
-Licensed under the Apache License, Version 2.0 (the "License")
+Licensed under the Apache License, Version 2.0
 
 ```
 
@@ -277,8 +279,9 @@ MedVoice Africa is a **decision-support tool** for trained community health work
 
 <div align="center">
 
-**Built for the Kaggle x Google Deepmind — Gemma 4 Good Hackathon**
+**For the Kaggle x Google Deepmind — Gemma 4 Good Hackathon**
 
-*Bridging the medical desert, one village at a time.*
+*Made with 💗 for the African Community.*
+
 
 </div>
