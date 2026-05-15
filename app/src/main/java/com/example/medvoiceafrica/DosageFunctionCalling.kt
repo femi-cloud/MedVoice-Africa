@@ -300,7 +300,11 @@ object DosageFunctionCalling {
                 dosePerTake = "${dosePerTake.toInt()} mg",
                 frequencyPerDay = medProtocol.dosesPerDay,
                 durationDays = 5,
-                specialInstructions = medProtocol.instruction,
+                specialInstructions = medProtocol.let {
+                    with(MedProtocols) {
+                        it.getInstruction(isFr)
+                    }
+                },
                 warningMessage = "",
                 source = DosageSource.LOCAL_PROTOCOL
             )
@@ -488,11 +492,10 @@ Reply ONLY with this JSON (nothing else):
                     ?.trim()
             }
 
-            val dose = extract("dose_per_take") ?: "?"
+            val doseExtracted = extract("dose_per_take") ?: "?"
+            val localProtocol = if (doseExtracted == "?" || doseExtracted.isBlank()) MedProtocols.findProtocol(params.medicineName) else null
 
-            val finalDose = if (dose == "?" || dose.isBlank()) {
-                // L'IA n'a pas pu calculer → on tente le protocole local
-                val localProtocol = MedProtocols.findProtocol(params.medicineName)
+            val finalDose = if (doseExtracted == "?" || doseExtracted.isBlank()) {
                 val weight = params.patientWeightKg
                 if (localProtocol != null && weight != null && weight > 0) {
                     val rawVal = localProtocol.mgPerKg * weight
@@ -500,14 +503,17 @@ Reply ONLY with this JSON (nothing else):
                         localProtocol.maxPerDayMg else rawVal
                     "${(safe / localProtocol.dosesPerDay).toInt()} mg"
                 } else throw Exception("Insufficient data for parsing")
-            } else dose
+            } else doseExtracted
 
             DosageResult(
                 medicineName = params.medicineName.replaceFirstChar { it.uppercase() },
                 dosePerTake = finalDose,
                 frequencyPerDay = extract("frequency_per_day")?.toIntOrNull() ?: 3,
                 durationDays = extract("duration_days")?.toIntOrNull() ?: 5,
-                specialInstructions = extract("instructions") ?: "",
+                specialInstructions = extract("instructions")
+                    ?: localProtocol?.let { lp ->
+                        with(MedProtocols) { lp.getInstruction(isFr) }
+                    } ?: "",
                 warningMessage = extract("warning") ?: "",
                 source = if (isOnline) DosageSource.LLM_GEMINI else DosageSource.LLM_LLAMA
             )

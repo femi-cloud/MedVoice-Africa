@@ -16,7 +16,8 @@ object ReportDataMapper {
         dosageParams: DosageParams?,
         currentMedications: List<String>,
         isOffline: Boolean,
-        agentName: String = ""
+        agentName: String = "",
+        lang: String = "fr",
     ): ReportData {
         
         // 1. Détermination du triage global
@@ -45,6 +46,7 @@ object ReportDataMapper {
             currentTreatments = currentMedications,
             triage = triage,
             symptomsReported = symptoms,
+            lang = lang,
             sessionTitle = sessionTitle,
             dosageResult = dosageResult,
             drugInteraction = dosageResult?.warningMessage?.takeIf { it.contains("Interaction", ignoreCase = true) },

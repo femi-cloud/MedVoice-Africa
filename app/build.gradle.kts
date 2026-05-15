@@ -74,6 +74,7 @@ dependencies {
     implementation("org.codeshipping:llama-kotlin-android:0.1.0")
 
     implementation("com.google.code.gson:gson:2.10.1")
+    implementation(libs.androidx.compose.foundation.layout)
 
     // Room — local database for conversation history
     val roomVersion = "2.7.1"
@@ -101,11 +102,6 @@ dependencies {
 
     // WorkManager — Synchronisation différée SyncManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
-
-    // FileProvider support
-    implementation("androidx.core:core-ktx:1.15.0") {
-        version { strictly("1.15.0") }
-    }
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")

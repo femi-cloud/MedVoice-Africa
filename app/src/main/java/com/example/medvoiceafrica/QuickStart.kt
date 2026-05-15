@@ -61,9 +61,9 @@ data class QuickAction(
 fun QuickStartButtons(
     colors: MedVoiceColors,
     onSuggestion: (String) -> Unit,  // envoie directement
-    onPrefill: (String) -> Unit       // pré-remplit le champ texte
+    onPrefill: (String) -> Unit,
+    isFr: Boolean
 ) {
-    val isFr = Locale.getDefault().language == "fr"
 
     val actions = if (isFr) listOf(
         QuickAction(

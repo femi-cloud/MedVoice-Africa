@@ -30,7 +30,8 @@ fun MedicationsDialog(
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Icon(Icons.Default.Medication, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
-                Text("Traitements en cours") 
+                val isFr = java.util.Locale.getDefault().language == "fr"
+                Text(if (isFr) "Traitements en cours" else "Current treatments")
             }
         },
         text = {
@@ -46,7 +47,8 @@ fun MedicationsDialog(
                 OutlinedTextField(
                     value = newMedicationText,
                     onValueChange = { newMedicationText = it },
-                    label = { Text("Nouveau médicament") },
+                    label = { val isFr = java.util.Locale.getDefault().language == "fr"
+                        Text(if (isFr) "Nouveaux médicaments" else "New medicines") },
                     placeholder = { Text("Ex: Paracétamol, Insuline...") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -107,7 +109,8 @@ fun MedicationsDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Terminer")
+                val isFr = java.util.Locale.getDefault().language == "fr"
+                Text(if (isFr) "Terminer" else "Finish")
             }
         }
     )

@@ -179,26 +179,28 @@ object SmsTransferHelper {
     }
 
     // ── Construit le résumé patient depuis DosageParams ──────────
-    fun buildPatientSummary(params: DosageParams?): String {
-        if (params == null) return "Informations patient non fournies"
+    fun buildPatientSummary(params: DosageParams?, isFr: Boolean = true): String {
+        if (params == null) return if (isFr) "Informations patient non fournies"
+        else "Patient information not provided"
 
         return buildString {
-            // Logique de classification précise (fusion des deux versions)
             val isChild = (params.patientWeightKg != null && params.patientWeightKg < 40.0) ||
-                    (params.patientAgeYears != null && params.patientAgeYears < 15.0) ||
-                    (params.patientAgeMonths != null && params.patientAgeMonths < 180.0)
+                    (params.patientAgeYears   != null && params.patientAgeYears < 15.0) ||
+                    (params.patientAgeMonths  != null && params.patientAgeMonths < 180.0)
 
-            append(if (isChild) "Enfant" else "Adulte")
+            append(if (isChild)
+                (if (isFr) "Enfant" else "Child")
+            else
+                (if (isFr) "Adulte" else "Adult"))
 
-            // Gestion sécurisée du poids pour le rapport médical
-            params.patientWeightKg?.let {
-                append(", ${it.toInt()} kg")
-            } ?: append(", poids inconnu")
+            params.patientWeightKg?.let { append(", ${it.toInt()} kg") }
+                ?: append(if (isFr) ", poids inconnu" else ", weight unknown")
 
-            // Gestion précise de l'âge (Années + Mois pour les petits)
-            params.patientAgeYears?.let { append(", ${it.toInt()} ans") }
+            params.patientAgeYears?.let {
+                append(", ${it.toInt()} ${if (isFr) "ans" else "yrs"}")
+            }
             params.patientAgeMonths?.let { age ->
-                if (age < 24) append(", ${age.toInt()} mois")
+                if (age < 24) append(", ${age.toInt()} ${if (isFr) "mois" else "mo"}")
             }
         }
     }
@@ -246,7 +248,7 @@ fun TransferButton(
     colors: MedVoiceColors,
     dosageResult: DosageResult? = null,      // ← NOUVEAU : injecté depuis DosageCard
     dosageParams: DosageParams? = null,      // ← NOUVEAU : pour le résumé patient
-    isFr: Boolean = Locale.getDefault().language == "fr"
+    isFr: Boolean
 ) {
     val context = LocalContext.current
     var showDialog by remember { mutableStateOf(false) }
@@ -297,6 +299,7 @@ fun TransferButton(
             cspsName = cspsName,
             dosageResult = dosageResult,
             dosageParams = dosageParams,
+            isFr = isFr,
             onDismiss = { showDialog = false }
         )
     }
@@ -313,15 +316,16 @@ private fun TransferConfirmDialog(
     cspsName: String,
     dosageResult: DosageResult?,
     dosageParams: DosageParams?,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    isFr: Boolean,
 ) {
     val context = LocalContext.current
-    val isFr = Locale.getDefault().language == "fr"
+
 
     // ── Pré-remplissage automatique ───────────────────────────────
     var phone by remember { mutableStateOf(doctorPhone) }
     var patient by remember {
-        mutableStateOf(SmsTransferHelper.buildPatientSummary(dosageParams))
+        mutableStateOf(SmsTransferHelper.buildPatientSummary(dosageParams, isFr))
     }
     var symptoms by remember {
         mutableStateOf(
@@ -336,7 +340,7 @@ private fun TransferConfirmDialog(
     var showPreview by remember { mutableStateOf(false) }
 
     // ── Message généré en temps réel (réactif aux champs) ────────
-    val generatedMessage by remember(phone, patient, symptoms) {
+    val generatedMessage by remember(phone, patient, symptoms, isFr) {
         derivedStateOf {
             SmsTransferHelper.buildMessage(
                 triageLevel = message.triageLevel,

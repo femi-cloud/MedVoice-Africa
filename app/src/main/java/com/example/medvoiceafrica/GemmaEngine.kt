@@ -333,7 +333,7 @@ class GemmaEngine(private val context: Context) {
 
 
             // Fast offline check
-            if (!isOnline()) {
+            if (!online) {
 
                 // 1. Essayer LlamaEngine si disponible
                 if (LlamaEngine.isReady()) {
@@ -354,8 +354,7 @@ class GemmaEngine(private val context: Context) {
                 val db = AppDatabase.getInstance(context)
                 val lowerQuery = userMessage.lowercase()
                 val omsResult = db.omsProtocolDao().searchProtocols("%$lowerQuery%")
-                if (omsResult.isNotEmpty()) {
-                    val first = omsResult.first()
+
 
                     if (omsResult.isNotEmpty()) {
                         val first = omsResult.first()
@@ -386,7 +385,7 @@ class GemmaEngine(private val context: Context) {
                         return@withContext Result.success(omsMsg)
                     }
 
-                }
+
 
                 // Détection salutation hors-ligne
                 val isSocialMessage = listOf("bonjour", "bonsoir", "salut", "hello", "hi", "good morning")

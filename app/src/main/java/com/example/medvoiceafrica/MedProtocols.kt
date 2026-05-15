@@ -5,8 +5,54 @@ object MedProtocols {
         val mgPerKg: Double,
         val maxPerDayMg: Double,
         val dosesPerDay: Int,
-        val instruction: String
+        val instruction: String,
+        val instructionEn: String = ""
     )
+    fun DosageInfo.getInstruction(isFr: Boolean): String {
+        if (isFr || instructionEn.isBlank()) return instruction
+        return instructionEn.ifBlank { autoTranslate(instruction) }
+    }
+
+    private fun autoTranslate(fr: String): String = fr
+        .replace("Toutes les 6 heures", "Every 6 hours")
+        .replace("Toutes les 6h", "Every 6 hours")
+        .replace("Toutes les 8 heures", "Every 8 hours")
+        .replace("Toutes les 8h", "Every 8 hours")
+        .replace("Toutes les 4-5h", "Every 4-5 hours")
+        .replace("Matin et soir", "Morning and evening")
+        .replace("matin et soir", "morning and evening")
+        .replace("avec repas", "with food")
+        .replace("avec repas gras", "with a fatty meal")
+        .replace("à jeun", "on an empty stomach")
+        .replace("À jeun", "On an empty stomach")
+        .replace("1 fois/jour", "Once daily")
+        .replace("1 fois par jour", "Once daily")
+        .replace("Dose unique", "Single dose")
+        .replace("dose unique", "single dose")
+        .replace("Le matin", "In the morning")
+        .replace("le matin", "in the morning")
+        .replace("Le soir", "In the evening")
+        .replace("le soir", "in the evening")
+        .replace("Au coucher", "At bedtime")
+        .replace("Réservé adulte", "Adults only")
+        .replace("Réservé usage hospitalier", "Hospital use only")
+        .replace("Hospitalier", "Hospital setting")
+        .replace("hospitalier", "hospital setting")
+        .replace("Éviter", "Avoid")
+        .replace("Surveiller", "Monitor")
+        .replace("Compléter le traitement", "Complete the full course")
+        .replace("avant repas", "before meals")
+        .replace("après repas", "after meals")
+        .replace("Risque dépendance", "Risk of dependence")
+        .replace("Ne pas arrêter brutalement", "Do not stop abruptly")
+        .replace("30min avant repas", "30 min before meals")
+        .replace("Éviter alcool", "Avoid alcohol")
+        .replace("Colore les urines", "May discolor urine")
+        .replace("Colore urines", "May discolor urine")
+        .replace("Compléter le traitement", "Complete the full course")
+        .replace("Protocole Coartem", "Coartem protocol")
+        .replace("Résistances fréquentes", "Frequent resistance")
+        .replace("Vérifier sensibilité locale", "Check local sensitivity")
 
     // ═══════════════════════════════════════════════════════════════
     // Protocoles de base (OMS) — 100+ molécules

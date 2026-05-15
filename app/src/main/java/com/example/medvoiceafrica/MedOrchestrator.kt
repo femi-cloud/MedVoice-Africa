@@ -14,7 +14,7 @@ data class AiAction(
 object MedOrchestrator {
     private val gson = Gson()
 
-    fun extractAndProcess(fullResponse: String): Pair<String, DosageResult?> {
+    fun extractAndProcess(fullResponse: String, isFr: Boolean = true): Pair<String, DosageResult?> {
         val dataRegex = Regex("""(?is)\[\[DATA\]\](.*?)(?:\[\[/DATA\]\]|$)""")
         val matchResult = dataRegex.find(fullResponse)
 
@@ -45,7 +45,7 @@ object MedOrchestrator {
 
                 // Calcul normal
                 action.weight_kg != null && action.drug != null ->
-                    Pair(humanText, calculate(action.drug, action.weight_kg))
+                    Pair(humanText, calculate(action.drug, action.weight_kg, isFr))
 
                 else -> Pair(humanText, null)
             }
@@ -82,16 +82,15 @@ object MedOrchestrator {
         return null
     }
 
-    private fun calculate(drug: String, weight: Double): DosageResult? {
+    private fun calculate(drug: String, weight: Double, isFr: Boolean = true): DosageResult? {
         // SECURITE 1 : Rejet des poids delirants ou negatifs
         if (weight <= 0.0 || weight > 150.0) {
             return null
         }
 
         // SECURITE 2 : Alerte specifique pour les tres petits poids
-        val warning = if (weight < 3.0) " Poids critique (<3kg). Prudence extreme." else ""
+        val warning = if (weight < 3.0) if (isFr) " Poids critique (<3kg). Prudence extrême." else " Critical weight (<3kg). Extreme caution." else ""
 
-        // CORRECTION BUG : utiliser findProtocol() au lieu de lookup direct
         // L'IA retourne parfois "paracetamol" sans accent alors que la cle est "paracetamol" ou "paracetamol"
         val protocol = MedProtocols.findProtocol(drug) ?: return null
 
@@ -107,9 +106,10 @@ object MedOrchestrator {
             dosePerTake = "${"%.1f".format(dosePerTake)} mg",
             frequencyPerDay = protocol.dosesPerDay,
             durationDays = 3,
-            specialInstructions = protocol.instruction,
+            specialInstructions = with(MedProtocols) { protocol.getInstruction(isFr) },
             warningMessage = warning,
             source = DosageSource.LOCAL_PROTOCOL
         )
     }
+
 }
