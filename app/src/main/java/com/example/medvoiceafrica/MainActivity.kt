@@ -2170,9 +2170,9 @@ fun ChatBubble(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     BubbleBtn(R.drawable.ic_copy, colors.textSecondary.copy(0.5f)) { onCopyText(message.text) }
                     Spacer(Modifier.width(4.dp))
-                    val isThisSpeaking = isSpeaking && ttsReady // speakingMessageIdState handled in MedVoiceChatScreen
+                    val isThisSpeaking = isSpeaking && ttsReady
                     BubbleBtn(
-                        iconRes = if (isThisSpeaking) R.drawable.ic_stop else R.drawable.ic_volume_up,
+                        iconRes = if (isThisSpeaking) R.drawable.ic_stop_square else R.drawable.ic_volume_up,
                         color = if (isThisSpeaking) colors.accent else colors.textSecondary.copy(0.5f),
                         isActive = isThisSpeaking
                     ) {
@@ -2485,17 +2485,22 @@ private fun doSend(
         }
 
         if (result.isSuccess) {
-            // L'Orchestrateur vérifie si le LLM a sorti un JSON malgré tout
             val (finalText, dosageResult) = MedOrchestrator.extractAndProcess(cleaned, isFr)
 
-            // On ajoute la réponse propre au chat
             val responseMsg = ChatMessage(text = finalText, isUser = false, triageLevel = triage)
             messages.add(responseMsg)
 
-            // Si l'IA standard a quand même sorti un dosage, on l'affiche
             dosageResult?.let { onDosageResult(it) }
 
-            // Speak automatique supprimé — déclenché uniquement par le bouton haut-parleur
+            // ── Lecture automatique après génération ────────────────────────
+            // Règle : lecture auto EN/FR uniquement — pas pour les réponses Fon
+            // (aucun moteur TTS ne supporte le Fon avec un accent correct)
+            val isFonResponse = finalText.any { c -> c in listOf('ɖ', 'ɔ', 'ɛ', 'ɣ', 'ŋ', 'ǒ', 'ǎ', 'ǐ') }
+            if (!isFonResponse) {
+                val lang = if (detectIfFrench(finalText)) "fr" else "en"
+                onSpeakText(finalText, responseMsg.id, lang)
+            }
+
             if (isConsultationMode) onRestartListening()
 
         } else {
