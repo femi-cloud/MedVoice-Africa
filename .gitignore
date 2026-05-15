@@ -28,3 +28,12 @@ secrets.properties
 .idea/
 .kotlin/
 *.log
+
+.idea/workspace.xml
+.idea/shelf/
+.idea/dictionaries/
+.idea/httpRequests/
+.idea/caches/
+.idea/libraries/
+*.iml
+out/
