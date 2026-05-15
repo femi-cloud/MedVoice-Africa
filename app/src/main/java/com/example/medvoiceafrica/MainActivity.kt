@@ -161,6 +161,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var db: AppDatabase
 
     private val pendingImageState      = mutableStateOf<Bitmap?>(null)
+    // URI persistante de la photo sélectionnée — partagée avec MedVoiceChatScreen pour doSend
+    private val pendingImageUriState   = mutableStateOf<String?>(null)
     private val isListeningState       = mutableStateOf(false)
     private val recognizedTextState    = mutableStateOf("")
     private val isSpeakingState        = mutableStateOf(false)
@@ -446,9 +448,9 @@ class MainActivity : ComponentActivity() {
             networkMonitor.isOnline
                 .distinctUntilChanged()
                 .collect { isOnline ->
-                isOnlineState.value = isOnline
-                if (isOnline) SyncManager.syncNow(this@MainActivity)
-            }
+                    isOnlineState.value = isOnline
+                    if (isOnline) SyncManager.syncNow(this@MainActivity)
+                }
         }
 
         val initResult = gemmaEngine.initialize()
@@ -839,13 +841,19 @@ fun MedVoiceApp(
                                             currentSessionId = session.id
                                             showStats = false
                                             preloadedMessages = msgs.map {
+                                                // Recharger le bitmap depuis le fichier si imageUri est présent
+                                                val restoredBitmap = if (!it.imageUri.isNullOrBlank()) {
+                                                    try { BitmapFactory.decodeFile(it.imageUri) } catch (_: Exception) { null }
+                                                } else null
                                                 ChatMessage(
                                                     text = it.text, isUser = it.isUser,
                                                     triageLevel = try {
                                                         TriageLevel.valueOf(it.triageLevel)
                                                     } catch (_: Exception) {
                                                         TriageLevel.UNKNOWN
-                                                    }
+                                                    },
+                                                    imageUri = it.imageUri,
+                                                    imageBitmap = restoredBitmap
                                                 )
                                             }
                                             drawerState.close()
@@ -1735,9 +1743,13 @@ fun MedVoiceChatScreen(
                     isFr = chatLanguageIsFrench,
                     onDismiss = { pendingDosageResult = null },
                     onInjectToChat = { dosageText, triage ->
-                        messages.add(ChatMessage(text = dosageText, isUser = false, triageLevel = triage))
+                        // FIX : créer le message d'abord pour récupérer son UUID,
+                        // puis passer cet UUID à onSpeakText pour que le bouton
+                        // speaker de CE message se transforme en carré pendant la lecture
+                        val dosageMsg = ChatMessage(text = dosageText, isUser = false, triageLevel = triage)
+                        messages.add(dosageMsg)
                         val lang = if (chatLanguageIsFrench) "fr" else "en"
-                        onSpeakText(dosageText, triage.name, lang)
+                        onSpeakText(dosageText, dosageMsg.id, lang)
                         pendingDosageResult = null
                         scope.launch {
                             activeSessionId?.let { sid ->
@@ -2101,7 +2113,11 @@ fun ChatBubble(
                     if (message.text.isNotBlank()) {
                         // Séparer le texte humain du bloc [[DATA]]
                         val dataRegex = Regex("""(?is)\[\[DATA\]\].*?(?:\[\[/DATA\]\]|${'$'})""")
-                        val humanText = message.text.replace(dataRegex, "").trim()
+                        // FIX : supprimer aussi les tags [TRIAGE:X] et [TRIAGE:INFO] de l'affichage
+                        val humanText = message.text
+                            .replace(dataRegex, "")
+                            .replace(Regex("\\[TRIAGE:\\w+\\]"), "")
+                            .trim()
                         val dataMatch = Regex("""(?is)\[\[DATA\]\](.*?)(?:\[\[/DATA\]\]|${'$'})""").find(message.text)
                         val dataContent = dataMatch?.groupValues?.get(1)
                             ?.replace(Regex("""(?i)```json"""), "")?.replace("```", "")?.trim()
@@ -2275,6 +2291,8 @@ private fun doSend(
     onSpeakText: (String, String, String) -> Unit = { _, _, _ -> },
     gemmaEngine: GemmaEngine,
     onLanguageDetected: (Boolean) -> Unit = {},
+    // URI persistante de l'image — pour sauvegarder en base et recharger la photo plus tard
+    imageUri: String? = null,
 ) {
     val text = input.trim()
     if (text.isBlank() && image == null) return
@@ -2364,7 +2382,12 @@ private fun doSend(
     }
 
     // ── FON NIVEAU 1 — mots-clés directs ──
-    val fonPhrase = FonEmergencyData.detect(text)
+    // GARDE : on n'active la détection Fon que si le message N'EST PAS du français pur
+    // Cela évite les faux positifs sur des mots comme "faire" (contient "fa"),
+    // "faut" (contient "fa"), "convulsions" (contient "ko" selon certains dictionnaires), etc.
+    val textHasFonChars = text.any { c -> c in listOf('ɖ', 'ɔ', 'ɛ', 'ɣ', 'ŋ', 'ǒ', 'ǎ', 'ǐ', 'ɔ') }
+    val textLikelyFon = textHasFonChars || (!detectIfFrench(text) && FonEmergencyData.isFonMessage(text))
+    val fonPhrase = if (textLikelyFon) FonEmergencyData.detect(text) else null
     if (fonPhrase != null) {
         clearInput(); clearImage()
         messages.add(ChatMessage(text = text, isUser = true))
@@ -2387,8 +2410,9 @@ private fun doSend(
 
     if (context != null) {
         val fonRepository = EmergencyRepository(context)
-        // ligne 2186-2187, remplacer par :
-        val isFonPrompt = FonEmergencyData.isFonMessage(text) && !detectIfFrench(text)
+        // Même garde que le niveau 1 : on n'active que si le texte est réellement Fon
+        // (caractères IPA présents OU isFonMessage ET pas du français détecté)
+        val isFonPrompt = textLikelyFon
         val urgenceFon = if (!isOnline && isFonPrompt) fonRepository.findMatch(text) else null
 
         if (urgenceFon != null) {
@@ -2438,7 +2462,7 @@ private fun doSend(
     // 3. --- CHAT IA STANDARD ---
     // =================================================================
     clearInput(); clearImage()
-    messages.add(ChatMessage(text = text, isUser = true, imageBitmap = image))
+    messages.add(ChatMessage(text = text, isUser = true, imageBitmap = image, imageUri = imageUri))
     setLoading(true)
     val isFr = detectIfFrench(text)
     val medsPrompt = if (currentMeds.isNotEmpty()) {
@@ -2466,10 +2490,22 @@ private fun doSend(
         val displayResponse = GemmaEngine.cleanResponseForDisplay(rawResponse)
 
         // Détecter si c'est un message social simple et forcer UNKNOWN
-        val isSocialReply = !rawResponse.contains("TRIAGEROUGE")
+        // Un message social = salutation, politesse, question d'identité — sans contenu médical
+        val socialPatterns = Regex(
+            "^(bonjour|bonsoir|salut|merci|au revoir|bonne nuit|à bientôt|" +
+                    "hello|hi|hey|thanks|thank you|good morning|good evening|good night|bye|goodbye|" +
+                    "qui es[- ]tu|what are you|who are you|présente[- ]toi|tell me about yourself)[\\.!\\?]?$",
+            setOf(RegexOption.IGNORE_CASE)
+        )
+        val isMedicalContent = text.contains(
+            Regex("dose|poids|mg|symptom|patient|enfant|fièvre|fivre|douleur|toux|sang|convuls|urgence|" +
+                    "fever|pain|blood|cough|child|weight|vomit|diarr|malaria|paludisme",
+                RegexOption.IGNORE_CASE)
+        )
+        val isSocialReply = (socialPatterns.containsMatchIn(text.trim()) || !isMedicalContent)
+                && !rawResponse.contains("TRIAGEROUGE")
                 && !rawResponse.contains("TRIAGEJAUNE")
-                && rawResponse.length < 300
-                && !text.contains(Regex("dose|poids|mg|symptom|patient|enfant|fièvre|fivre", RegexOption.IGNORE_CASE))
+                && rawResponse.length < 400
 
         val triage = if (isSocialReply) TriageLevel.UNKNOWN
         else GemmaEngine.parseTriageLevelFromTag(rawResponse)
@@ -2530,8 +2566,8 @@ private fun doSend(
                     ChatSession(title = smartTitle, triageLevel = triage.name)
                 ).also { onSessionCreated(it) }
             }
-            // LIGNE 2459 — REMPLACE par :
-            db.messageDao().insertMessage(ChatMessageEntity(sessionId = sessionId, text = text, isUser = true, imageUri = messages.lastOrNull { it.isUser }?.imageUri))
+            // Sauvegarder le message user avec son imageUri (paramètre direct, pas lookup dans messages)
+            db.messageDao().insertMessage(ChatMessageEntity(sessionId = sessionId, text = text, isUser = true, imageUri = imageUri))
             if (result.isSuccess) {
                 db.messageDao().insertMessage(ChatMessageEntity(sessionId = sessionId, text = cleaned, isUser = false, triageLevel = triage.name))
             }
