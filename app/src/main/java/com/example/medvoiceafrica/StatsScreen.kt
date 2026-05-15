@@ -138,7 +138,7 @@ fun StatsScreen(
     onBack: () -> Unit
 ) {
     val isFr = Locale.getDefault().language == "fr"
-    val since7days = System.currentTimeMillis() - 7 * 24 * 3600 * 1000L
+    val since7days = remember { System.currentTimeMillis() - 7 * 24 * 3600 * 1000L }
 
     val total by db.consultationDao().totalCount().collectAsStateWithLifecycle(0)
     val urgences by db.consultationDao().urgencesCount().collectAsStateWithLifecycle(0)
@@ -147,8 +147,8 @@ fun StatsScreen(
     val urgencesWeek by db.consultationDao().urgencesThisWeek(since7days).collectAsStateWithLifecycle(0)
     val totalWeek by db.consultationDao().totalThisWeek(since7days).collectAsStateWithLifecycle(0)
 
-    val transferRate = if (totalWeek > 0) (urgencesWeek * 100 / totalWeek) else 0
-    val offlineRate = if (total > 0) (offlineCount * 100 / total) else 0
+    val transferRate = if (totalWeek > 0) (urgencesWeek * 100L / totalWeek).toInt() else 0
+    val offlineRate  = if (total > 0) (offlineCount * 100L / total).toInt() else 0
     val maxCount = (pathologies.maxOfOrNull { it.count } ?: 1).coerceAtLeast(1)
 
     Column(

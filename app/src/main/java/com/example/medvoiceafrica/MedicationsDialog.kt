@@ -23,6 +23,7 @@ fun MedicationsDialog(
     onDismiss: () -> Unit
 ) {
     var newMedicationText by remember { mutableStateOf("") }
+    val isFr = remember { java.util.Locale.getDefault().language == "fr" }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -30,7 +31,7 @@ fun MedicationsDialog(
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Icon(Icons.Default.Medication, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
-                val isFr = java.util.Locale.getDefault().language == "fr"
+
                 Text(if (isFr) "Traitements en cours" else "Current treatments")
             }
         },
@@ -47,8 +48,7 @@ fun MedicationsDialog(
                 OutlinedTextField(
                     value = newMedicationText,
                     onValueChange = { newMedicationText = it },
-                    label = { val isFr = java.util.Locale.getDefault().language == "fr"
-                        Text(if (isFr) "Nouveaux médicaments" else "New medicines") },
+                    label = { Text(if (isFr) "Nouveaux médicaments" else "New medicines") },
                     placeholder = { Text("Ex: Paracétamol, Insuline...") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -86,15 +86,13 @@ fun MedicationsDialog(
                     medications.forEach { med ->
                         InputChip(
                             selected = false,
-                            onClick = { },
+                            onClick = {onRemoveMedication(med)},
                             label = { Text(med) },
                             trailingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Close,
                                     contentDescription = "Supprimer $med",
-                                    modifier = Modifier
-                                        .size(16.dp)
-                                        .clickable { onRemoveMedication(med) }
+                                    modifier = Modifier.size(16.dp)
                                 )
                             },
                             // S'assurer que le chip est bien visible sur fond blanc/gris
@@ -109,7 +107,6 @@ fun MedicationsDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                val isFr = java.util.Locale.getDefault().language == "fr"
                 Text(if (isFr) "Terminer" else "Finish")
             }
         }

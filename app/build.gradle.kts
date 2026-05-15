@@ -19,7 +19,7 @@ android {
     defaultConfig {
         applicationId = "com.example.medvoiceafrica"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -42,10 +42,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
@@ -56,7 +52,12 @@ android {
     }
 }
 
-kotlin { jvmToolchain(17) }
+kotlin {
+    jvmToolchain(17)
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
 
 dependencies {
     // Jetpack Compose
@@ -75,6 +76,8 @@ dependencies {
 
     implementation("com.google.code.gson:gson:2.10.1")
     implementation(libs.androidx.compose.foundation.layout)
+    implementation(libs.androidx.compose.runtime)
+    implementation(libs.androidx.runtime)
 
     // Room — local database for conversation history
     val roomVersion = "2.7.1"
@@ -84,6 +87,7 @@ dependencies {
 
     // LiteRT — inférence Gemma 4 on-device (llama.cpp backend)
     implementation("com.google.mediapipe:tasks-genai:0.10.14")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
 
     // --- CameraX (Le caméraman) ---

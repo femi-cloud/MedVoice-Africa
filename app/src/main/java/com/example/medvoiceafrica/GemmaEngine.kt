@@ -191,7 +191,7 @@ class GemmaEngine(private val context: Context) {
                 val t = line.trim()
                 (t.startsWith("*") || t.startsWith("-")) && badPrefixes.any { t.contains(it, ignoreCase = true) }
             }.joinToString("\n").trim()
-            text = text.replace(Regex("\\[TRIAGE:\\w+\\]"), "").trim()
+
             return text.trimStart('•', '-', '\n', '\r').trim()
         }
 
@@ -290,9 +290,10 @@ class GemmaEngine(private val context: Context) {
     // Fast connectivity check — 3s socket timeout
     private suspend fun isOnline(): Boolean = withContext(Dispatchers.IO) {
         try {
-            val sock = Socket()
-            sock.connect(InetSocketAddress("8.8.8.8", 53), 5000)
-            sock.close(); true
+            Socket().use { sock ->
+                sock.connect(InetSocketAddress("8.8.8.8", 53), 3000)
+                true
+            }
         } catch (_: Exception) { false }
     }
 
@@ -326,7 +327,10 @@ class GemmaEngine(private val context: Context) {
             // RAG: find relevant protocols BEFORE trying network (needed for offline too)
             val relevantProtocols = ragEngine.findRelevant(userMessage)
             val ragContext = RagEngine.buildContext(relevantProtocols, lang)
-            val online = isOnline()
+
+            val forceOffline = context.getSharedPreferences("medvoice_settings", Context.MODE_PRIVATE)
+                .getBoolean("force_offline", false)
+            val online = if (forceOffline) false else isOnline()
 
             if (relevantProtocols.isNotEmpty())
                 Log.d(TAG, "RAG: injecting ${relevantProtocols.size} protocol(s): ${relevantProtocols.map { it.title }}")
@@ -346,7 +350,7 @@ class GemmaEngine(private val context: Context) {
                             })
                             Result.success(llamaResult.text)
                         }
-                        is LlamaResult.Fallback -> Result.success("${llamaResult.offlineText}TRIAGEINFO")
+                        is LlamaResult.Fallback -> Result.success("${llamaResult.offlineText}\n[TRIAGE:INFO]")
                     }
                 }
 
@@ -360,10 +364,10 @@ class GemmaEngine(private val context: Context) {
                         val first = omsResult.first()
                         val inferredTriage = when {
                             first.protocol.contains("urgence", ignoreCase = true) ||
-                                    first.protocol.contains("transfert", ignoreCase = true) -> "TRIAGEROUGE"
+                                    first.protocol.contains("transfert", ignoreCase = true) -> "[TRIAGE:ROUGE]"
                             first.protocol.contains("consultation", ignoreCase = true) ||
-                                    first.protocol.contains("24h", ignoreCase = true) -> "TRIAGEJAUNE"
-                            else -> "TRIAGEVERT"
+                                    first.protocol.contains("24h", ignoreCase = true) -> "[TRIAGE:JAUNE]"
+                            else -> "[TRIAGE:VERT]"
                         }
                         val intro = if (lang == "fr")
                             "D'après les protocoles OMS locaux :"
@@ -393,9 +397,9 @@ class GemmaEngine(private val context: Context) {
                 if (isSocialMessage) {
                     return@withContext Result.success(
                         if (lang == "fr")
-                            "Bonjour ! Je suis MedVoice Africa, votre assistant médical. Je fonctionne actuellement en mode hors-ligne. Décrivez un symptôme ou un médicament et je ferai de mon mieux pour vous aider avec les protocoles OMS disponibles localement.\nTRIAGEVERT"
+                            "Bonjour ! Je suis MedVoice Africa, votre assistant médical. Je fonctionne actuellement en mode hors-ligne. Décrivez un symptôme ou un médicament et je ferai de mon mieux pour vous aider avec les protocoles OMS disponibles localement.\n[TRIAGE:VERT]"
                         else
-                            "Hello! I'm MedVoice Africa, your medical assistant. I'm currently running offline. Describe a symptom or medication and I'll help you with locally available WHO protocols.\nTRIAGEVERT"
+                            "Hello! I'm MedVoice Africa, your medical assistant. I'm currently running offline. Describe a symptom or medication and I'll help you with locally available WHO protocols.\n[TRIAGE:VERT]"
                     )
                 }
 
@@ -410,7 +414,7 @@ class GemmaEngine(private val context: Context) {
                         if (ragContext.isNotBlank()) ragContext
                         else "Describe a specific symptom (e.g. fever, cough, diarrhea) to access offline WHO protocols."
                     }"
-                return@withContext Result.success(offlineMsg + "TRIAGEINFO")
+                return@withContext Result.success(offlineMsg + "\n[TRIAGE:INFO]")
             }
 
             // ─── En ligne : maintenant on encode l'image et on appelle Gemini ───
@@ -484,8 +488,8 @@ class GemmaEngine(private val context: Context) {
                     put("role", "model"); put("parts", JSONArray().apply { put(JSONObject().put("text", cleaned)) })
                 })
                 enforceMemoryLimit(); saveHistory()
-                Log.d(TAG, "✅ Response (RAG:${relevantProtocols.size}): ${cleaned.take(80)}")
-                Result.success(rawText)
+                Log.d(TAG, "Response (RAG:${relevantProtocols.size}): ${cleaned.take(80)}")
+                Result.success(cleaned)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error: ${e.javaClass.simpleName}: ${e.message}")

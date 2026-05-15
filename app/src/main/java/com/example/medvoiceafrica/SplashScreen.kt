@@ -6,6 +6,7 @@ package com.example.medvoiceafrica
 // Contient : logo, disclaimer médical, bouton "J'accepte & Continuer"
 // ═══════════════════════════════════════════════════════════════════
 
+import android.content.Context
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -41,12 +42,19 @@ fun MedVoiceSplashScreen(
     val isFr = Locale.getDefault().language == "fr"
 
     // Animation d'entrée du logo
-    val logoAlpha by rememberInfiniteTransition(label = "pulse")
-        .animateFloat(
-            initialValue = 0.7f, targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(1200), RepeatMode.Reverse),
-            label = "pulse"
-        )
+    val logoAlpha = remember { Animatable(0f) }
+
+    LaunchedEffect(Unit) {
+        // Fade-in initial
+        logoAlpha.animateTo(1f, animationSpec = tween(600))
+
+        // 3 pulsations puis stop
+        repeat(3) {
+            logoAlpha.animateTo(0.7f, animationSpec = tween(900))
+            logoAlpha.animateTo(1.0f, animationSpec = tween(900))
+        }
+        // Reste à 1f — plus d'animation, GPU libéré
+    }
 
     // Fond dégradé sombre
     Box(
@@ -75,7 +83,7 @@ fun MedVoiceSplashScreen(
             Box(
                 modifier = Modifier
                     .size(90.dp)
-                    .alpha(logoAlpha)
+                    .alpha(logoAlpha.value)
                     .background(Color(0xFF1D9E75), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
@@ -186,7 +194,7 @@ fun MedVoiceSplashScreen(
             // ── Bouton Accepter ───────────────────────────────────
             Button(
                 onClick = {
-                    context.getSharedPreferences("medvoice_safety", 0)
+                    context.getSharedPreferences("medvoice_safety", Context.MODE_PRIVATE)
                         .edit().putBoolean("splash_accepted", true).apply()
                     onAccepted()
                 },

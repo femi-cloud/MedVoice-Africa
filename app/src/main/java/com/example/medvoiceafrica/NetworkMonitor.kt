@@ -152,6 +152,11 @@ fun StatusChip(
                 fontSize = 11.sp,
                 color = colors.textSecondary
             )
+            Text(
+                text = if (llamaStatus.isNotEmpty()) "  $llamaStatus" else "",
+                fontSize = 10.sp,
+                color = colors.textSecondary
+            )
         }
     }
 }

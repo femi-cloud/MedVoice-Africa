@@ -120,7 +120,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "medvoice_db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     // fallbackToDestructiveMigration gardé en sécurité pour le dev
                     .fallbackToDestructiveMigration()
                     .build()
@@ -141,6 +141,13 @@ abstract class AppDatabase : RoomDatabase() {
                         isOffline INTEGER NOT NULL DEFAULT 0
                     )
                 """.trimIndent())
+            }
+        }
+
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Ajouter ici le changement de schéma entre v4 et v5
+                // Si inconnu, au moins déclarer la migration vide pour éviter le destructive fallback
             }
         }
 

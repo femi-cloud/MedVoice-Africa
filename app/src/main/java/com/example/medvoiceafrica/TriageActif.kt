@@ -55,7 +55,8 @@ object TriageAlertHelper {
     private fun vibrate(context: Context, pattern: LongArray) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val mgr = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                val mgr = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                    ?: return
                 mgr.defaultVibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
             } else {
                 @Suppress("DEPRECATION")
@@ -73,6 +74,7 @@ object TriageAlertHelper {
     }
 
     private fun speak(tts: TextToSpeech?, message: String) {
-        tts?.speak(message, TextToSpeech.QUEUE_ADD, null, "triage_alert")
+        if (tts == null) return
+        tts.speak(message, TextToSpeech.QUEUE_ADD, null, "triage_alert")
     }
 }

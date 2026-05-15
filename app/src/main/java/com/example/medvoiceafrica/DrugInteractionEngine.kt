@@ -222,11 +222,17 @@ Reply ONLY with this JSON format (nothing else):
 {"severity":"ROUGE|JAUNE|VERT","message":"Short explanation in English (max 2 sentences)"}"""
 
         return try {
-            val llmResponse: String = when {
+            // ── MODIFIÉ : on capture quelle source a réellement répondu ──
+            val llmResponse: String
+            val actualSource: InteractionSource
+
+            when {
                 isOnline -> {
                     // Gemini API
                     val result = gemmaEngine.runInferenceForInteraction(interactionPrompt, isFr)
-                    result.getOrDefault("")
+                    llmResponse = result.getOrDefault("")
+                    actualSource = if (llmResponse.isNotBlank()) InteractionSource.GEMINI_API
+                    else InteractionSource.FALLBACK  // Gemini a échoué silencieusement
                 }
                 LlamaEngine.isReady() -> {
                     // Llama local
@@ -239,14 +245,18 @@ Reply ONLY with this JSON format (nothing else):
                         ragContext = ""
                     )
                     when (result) {
-                        is LlamaResult.Success -> result.text
-                        is LlamaResult.Fallback -> ""
+                        is LlamaResult.Success  -> { llmResponse = result.text; actualSource = InteractionSource.LLAMA_LOCAL }
+                        is LlamaResult.Fallback -> { llmResponse = "";          actualSource = InteractionSource.FALLBACK }
                     }
                 }
-                else -> ""
+                else -> {
+                    llmResponse = ""
+                    actualSource = InteractionSource.FALLBACK
+                }
             }
 
-            parseInteractionResponse(llmResponse, scannedMol, medsStr, isFr, isOnline)
+            // ── MODIFIÉ : on passe actualSource au lieu de isOnline ──
+            parseInteractionResponse(llmResponse, scannedMol, medsStr, isFr, actualSource)
 
         } catch (e: Exception) {
             Log.e(TAG, "Erreur LLM interaction: ${e.message}")
@@ -263,18 +273,18 @@ Reply ONLY with this JSON format (nothing else):
     }
 
     // ── Parse la réponse JSON du LLM ─────────────────────────────
+// MODIFIÉ : reçoit InteractionSource directement au lieu de isOnline: Boolean
     private fun parseInteractionResponse(
         raw: String,
         scannedMol: String,
         currentMeds: String,
         isFr: Boolean,
-        isOnline: Boolean
+        source: InteractionSource          // ← était isOnline: Boolean
     ): InteractionResult {
         return try {
-            // Extraire le JSON même si le LLM a ajouté du texte autour
             val jsonMatch = Regex("""\{.*?\}""", RegexOption.DOT_MATCHES_ALL).find(raw)?.value ?: ""
             val severityMatch = Regex("\"severity\"\\s*:\\s*\"(ROUGE|JAUNE|VERT)\"").find(jsonMatch)?.groupValues?.get(1)
-            val messageMatch = Regex("\"message\"\\s*:\\s*\"([^\"]+)\"").find(jsonMatch)?.groupValues?.get(1)
+            val messageMatch  = Regex("\"message\"\\s*:\\s*\"([^\"]+)\"").find(jsonMatch)?.groupValues?.get(1)
 
             val severity = when (severityMatch) {
                 "ROUGE" -> InteractionSeverity.ROUGE
@@ -291,7 +301,7 @@ Reply ONLY with this JSON format (nothing else):
                 hasInteraction = severity == InteractionSeverity.ROUGE || severity == InteractionSeverity.JAUNE,
                 severity = severity,
                 message = message,
-                source = if (isOnline) InteractionSource.GEMINI_API else InteractionSource.LLAMA_LOCAL
+                source = source           // ← source réelle, pas déduite de isOnline
             )
         } catch (_: Exception) {
             InteractionResult(
@@ -302,7 +312,6 @@ Reply ONLY with this JSON format (nothing else):
             )
         }
     }
-
     // ── Extraction du nom de molécule depuis le texte OCR ─────────
     fun extractMoleculeName(ocrText: String): String {
         // 1. Nettoyage de base
@@ -334,7 +343,9 @@ Reply ONLY with this JSON format (nothing else):
             "hello", "help", "need", "want", "symptom", "conseil", "aider",
             "weighs", "weight", "years", "old", "year", "kilo", "kg", "months", "month", "mois", "days", "day", "an",
             "reponse", "identifie", "reconnu", "precisez", "calculer", "dose", "posologie", "recommande", "attention",
-            "identified", "recognized", "specify", "calculate", "dosage", "recommended", "warning", "please", "provide"
+            "identified", "recognized", "specify", "calculate", "dosage", "recommended", "warning", "please", "provide",
+            "flacon", "boite", "boîte", "comprime", "gelule", "solution", "injectable",
+            "poudre", "sirop", "suspension", "adulte", "generique", "notice"
         )
 
         return cleanedForSearch.split(Regex("\\s+"))

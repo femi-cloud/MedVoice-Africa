@@ -143,8 +143,14 @@ class SyncWorker(
                 put("is_offline", log.isOffline)
                 put("timestamp_day", log.timestamp / 86_400_000)  // Jour (pas heure exacte)
                 put("app_version", BuildConfig.VERSION_NAME)
+
                 // Hash anonyme pour dédoublonner côté serveur (pas de sessionId brut)
-                put("hash", (log.sessionId.toString() + log.timestamp.toString()).hashCode())
+                val raw = "${log.sessionId}${log.timestamp}${log.pathologie}"
+                val hash = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(raw.toByteArray())
+                    .take(8)
+                    .joinToString("") { "%02x".format(it) }
+                put("hash", hash)
             })
         }
         return JSONObject().apply {

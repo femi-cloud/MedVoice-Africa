@@ -45,7 +45,7 @@ object WhisperEngine {
     private const val MAX_RECORD_MS  = 10_000L
 
     // Seuil de silence pour arrêt automatique (RMS en dessous = silence)
-    private const val SILENCE_THRESHOLD_RMS = 300
+    private const val SILENCE_THRESHOLD_RMS = 1000
     private const val SILENCE_DURATION_MS   = 1_500L
 
     private var hfApiKey: String = ""
@@ -59,21 +59,17 @@ object WhisperEngine {
      */
     fun initialize(context: Context) {
         hfApiKey = try {
-            // Priorité 1 : clé dans SharedPreferences (configurable via Settings)
-            val prefs = context.getSharedPreferences("medvoice_prefs", Context.MODE_PRIVATE)
-            prefs.getString("hf_api_key", "") ?: ""
+            SecurePrefs.get(context).getString("hf_api_key", "") ?: ""
         } catch (_: Exception) { "" }
 
-        // Priorité 2 : BuildConfig si défini (local.properties → HF_API_KEY=...)
+        // Fallback BuildConfig si toujours vide
         if (hfApiKey.isBlank()) {
             hfApiKey = try {
-                val field = BuildConfig::class.java.getField("HF_API_KEY")
-                field.get(null) as? String ?: ""
+                BuildConfig::class.java.getField("HF_API_KEY").get(null) as? String ?: ""
             } catch (_: Exception) { "" }
         }
 
         ready = hfApiKey.isNotBlank()
-        Log.d(TAG, if (ready) "WhisperEngine ready (HF API)" else "WhisperEngine disabled — no HF key")
     }
 
     /**

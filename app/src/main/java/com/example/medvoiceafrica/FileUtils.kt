@@ -19,6 +19,8 @@ object FileUtils {
                 return
             }
 
+            targetFile.parentFile?.mkdirs()
+
             context.assets.open(assetPath).use { inputStream ->
                 FileOutputStream(targetFile).use { outputStream ->
                     inputStream.copyTo(outputStream)

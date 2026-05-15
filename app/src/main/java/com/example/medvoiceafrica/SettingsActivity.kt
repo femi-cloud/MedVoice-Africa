@@ -39,8 +39,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.runtime.LaunchedEffect
 
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import java.util.Locale
@@ -76,6 +76,11 @@ class SettingsActivity : ComponentActivity() {
 
         setContent {
             val prefs = getSharedPreferences("medvoice_settings", MODE_PRIVATE)
+            val securePrefs = remember { SecurePrefs.get(applicationContext) }
+            // Lecture de la clé HF depuis les prefs chiffrées
+            var hfApiKey by remember {
+                mutableStateOf(securePrefs.getString("hf_api_key", "") ?: "")
+            }
             var theme by remember { mutableStateOf(prefs.getString("theme", "dark") ?: "dark") }
             var ttsSpeed by remember { mutableStateOf(prefs.getFloat("tts_speed", 0.95f)) }
             var ttsPitch by remember { mutableStateOf(prefs.getFloat("tts_pitch", 1.0f)) }
@@ -86,10 +91,6 @@ class SettingsActivity : ComponentActivity() {
             var dataSaver by remember { mutableStateOf(prefs.getBoolean("data_saver", false)) }
             var doctorPhone by remember { mutableStateOf(prefs.getString("doctor_phone", "") ?: "") }
             var cspsName by remember { mutableStateOf(prefs.getString("csps_name", "") ?: "") }
-
-            var hfApiKey by remember {
-                mutableStateOf(prefs.getString("hf_api_key", "") ?: "")
-            }
 
             val voices by voicesState
             val ttsReady by ttsReadyState
@@ -122,6 +123,10 @@ class SettingsActivity : ComponentActivity() {
                     .putBoolean("data_saver", dataSaver)
                     .putString("doctor_phone", doctorPhone)
                     .putString("csps_name", cspsName)
+                    .apply()
+
+                // Clé API dans les prefs chiffrées séparément
+                securePrefs.edit()
                     .putString("hf_api_key", hfApiKey)
                     .apply()
             }
@@ -430,6 +435,12 @@ class SettingsActivity : ComponentActivity() {
                                 }
                                 SDivider(colors)
                                 var checking by remember { mutableStateOf(false) }
+                                LaunchedEffect(checking) {
+                                    if (checking) {
+                                        kotlinx.coroutines.delay(2000)
+                                        checking = false
+                                    }
+                                }
                                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text(if (isFr) "Vérifier les mises à jour" else "Check for updates",

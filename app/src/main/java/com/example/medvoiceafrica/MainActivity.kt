@@ -144,6 +144,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 data class ChatMessage(
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -442,7 +443,9 @@ class MainActivity : ComponentActivity() {
         // SyncManager.schedulePendingSync(this)   // planifie la sync périodique (6h)
 
         lifecycleScope.launch {
-            networkMonitor.isOnline.collect { isOnline ->
+            networkMonitor.isOnline
+                .distinctUntilChanged()
+                .collect { isOnline ->
                 isOnlineState.value = isOnline
                 if (isOnline) SyncManager.syncNow(this@MainActivity)
             }

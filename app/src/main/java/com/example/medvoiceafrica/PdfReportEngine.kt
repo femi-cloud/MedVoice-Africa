@@ -15,6 +15,13 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// ════════════════════════════════════════════════════════════════════
+// PdfReportEngine.kt — FINAL CORRIGÉ
+// Corrections vs version précédente :
+//   - Bug P1 : gestion multi-pages (startNewPage + ensureSpace)
+//   - Bug P2 : conseilFon dessiné 1 seule fois (dryRun sur drawWrapped)
+// ════════════════════════════════════════════════════════════════════
+
 object PdfReportEngine {
 
     private const val PAGE_W = 595
@@ -42,7 +49,7 @@ object PdfReportEngine {
         val consultationId: Long,
         val timestamp: Long,
         val isOffline: Boolean,
-        val lang: String = "fr",               // ← NOUVEAU : "fr" ou "en"
+        val lang: String = "fr",
         val patientName: String = "Anonyme",
         val weightKg: Float? = null,
         val ageYears: Int? = null,
@@ -60,26 +67,107 @@ object PdfReportEngine {
     )
 
     // ════════════════════════════════════════════════════════════════
+    // GESTION MULTI-PAGES — état interne du rendu
+    // ════════════════════════════════════════════════════════════════
+
+    // Ces variables sont réinitialisées à chaque appel de generateReport
+    private var doc: PdfDocument = PdfDocument()
+    private var currentPage: PdfDocument.Page? = null
+    private var currentCanvas: Canvas? = null
+    private var currentPageNumber: Int = 0
+    private lateinit var currentData: ReportData   // pour redessiner l'en-tête sur chaque page
+
+    /**
+     * Ferme la page courante et ouvre une nouvelle.
+     * Redessine un mini-en-tête en haut de chaque nouvelle page (sauf la 1ère).
+     * Retourne le nouveau Canvas et la position y de départ.
+     */
+    private fun startNewPage(): Pair<Canvas, Float> {
+        // Fermer la page précédente
+        currentPage?.let { doc.finishPage(it) }
+
+        currentPageNumber++
+        val pageInfo = PdfDocument.PageInfo.Builder(PAGE_W, PAGE_H, currentPageNumber).create()
+        currentPage  = doc.startPage(pageInfo)
+        currentCanvas = currentPage!!.canvas
+
+        // Mini-en-tête de continuation sur page 2+
+        var startY = 0f
+        if (currentPageNumber > 1) {
+            val bgPaint = Paint().apply { color = C_DARK; isAntiAlias = true }
+            currentCanvas!!.drawRect(0f, 0f, PAGE_W.toFloat(), 30f, bgPaint)
+            currentCanvas!!.drawText(
+                "MedVoice Africa  —  Suite de rapport (#${currentData.consultationId})",
+                ML, 20f, paint(8f, C_WHITE)
+            )
+            currentCanvas!!.drawLine(ML, 34f, MR, 34f, linePaint(C_ACCENT, 1f))
+            startY = 44f
+        }
+
+        return Pair(currentCanvas!!, startY)
+    }
+
+    /**
+     * Vérifie qu'il reste assez de place pour `neededSpace` pixels.
+     * Si non, crée une nouvelle page.
+     * Retourne le Canvas actif et le y courant (potentiellement remis à 0 sur nouvelle page).
+     */
+    private fun ensureSpace(y: Float, neededSpace: Float = 60f): Pair<Canvas, Float> {
+        // Réserve 80px en bas pour le footer de la dernière page
+        return if (y + neededSpace > PAGE_H - 80f) {
+            startNewPage()
+        } else {
+            Pair(currentCanvas!!, y)
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════
     fun generateReport(context: Context, data: ReportData): File? {
         return try {
-            val doc      = PdfDocument()
-            val pageInfo = PdfDocument.PageInfo.Builder(PAGE_W, PAGE_H, 1).create()
-            val page     = doc.startPage(pageInfo)
-            val canvas   = page.canvas
+            // Initialisation de l'état interne
+            doc               = PdfDocument()
+            currentPage       = null
+            currentCanvas     = null
+            currentPageNumber = 0
+            currentData       = data
 
+            // Démarrer la page 1
+            val (canvas1, _) = startNewPage()
+            var canvas = canvas1
             var y = 0f
+
+            // ── Section 1 : En-tête ──────────────────────────────────
             y = drawHeader(canvas, data, y)
+
+            // ── Section 2 : Profil patient ───────────────────────────
+            val (c2, y2) = ensureSpace(y, neededSpace = 120f)
+            canvas = c2; y = y2
             y = drawPatientProfile(canvas, data, y)
+
+            // ── Section 3 : Analyse clinique ─────────────────────────
+            val (c3, y3) = ensureSpace(y, neededSpace = 130f)
+            canvas = c3; y = y3
             y = drawClinicalAnalysis(canvas, data, y)
+
+            // ── Section 4 : Protocole de soins ───────────────────────
+            val (c4, y4) = ensureSpace(y, neededSpace = 160f)
+            canvas = c4; y = y4
             y = drawCareProtocol(canvas, data, y)
+
+            // ── Section 5 : Sécurité & Fon ───────────────────────────
+            val (c5, y5) = ensureSpace(y, neededSpace = 140f)
+            canvas = c5; y = y5
             y = drawSafetySection(canvas, data, y)
+
+            // ── Footer uniquement sur la dernière page ────────────────
             drawFooter(canvas, data)
 
-            doc.finishPage(page)
+            // Fermer la dernière page
+            currentPage?.let { doc.finishPage(it) }
 
-            val locale = if (data.lang == "fr") Locale.FRANCE else Locale.ENGLISH
-            val ts   = SimpleDateFormat("yyyyMMdd_HHmmss", locale).format(Date())
-            val file = File(context.getExternalFilesDir(null), "MedVoice_$ts.pdf")
+            val locale  = if (data.lang == "fr") Locale.FRANCE else Locale.ENGLISH
+            val ts      = SimpleDateFormat("yyyyMMdd_HHmmss", locale).format(Date())
+            val file    = File(context.getExternalFilesDir(null), "MedVoice_$ts.pdf")
             doc.writeTo(FileOutputStream(file))
             doc.close()
             file
@@ -106,10 +194,8 @@ object PdfReportEngine {
             ML, 50f, paint(9f, C_ACCENT)
         )
 
-        val connText = if (data.isOffline)
-            t("MODE HORS-LIGNE", "OFFLINE MODE", L)
-        else
-            t("EN LIGNE", "ONLINE", L)
+        val connText  = if (data.isOffline) t("MODE HORS-LIGNE", "OFFLINE MODE", L)
+        else t("EN LIGNE", "ONLINE", L)
         val connColor = if (data.isOffline) C_ORANGE else C_VERT
         canvas.drawText(connText, MR - 110f, 38f, paint(9f, connColor, bold = true))
 
@@ -117,7 +203,7 @@ object PdfReportEngine {
         canvas.drawLine(ML, y, MR, y, linePaint(C_ACCENT, 1.5f))
         y += 12f
 
-        val locale = if (L == "fr") Locale.FRANCE else Locale.ENGLISH
+        val locale  = if (L == "fr") Locale.FRANCE else Locale.ENGLISH
         val dateStr = SimpleDateFormat(
             if (L == "fr") "dd/MM/yyyy  HH:mm:ss" else "MM/dd/yyyy  HH:mm:ss", locale
         ).format(Date(data.timestamp))
@@ -216,22 +302,18 @@ object PdfReportEngine {
             ML + 10f, y, COL_W - 10f, paint(9.5f, C_DARK))
         y += 6f
 
-        val triageColor = triageColor(data.triage)
+        val triageColor   = triageColor(data.triage)
         val triageBgPaint = Paint().apply { color = triageColor; isAntiAlias = true; alpha = 230 }
-        val bandeauTop = y
+        val bandeauTop    = y
         canvas.drawRoundRect(RectF(ML, bandeauTop, MR, bandeauTop + 36f), 8f, 8f, triageBgPaint)
 
         val triageLabel = when (data.triage.uppercase()) {
-            "ROUGE" -> t("● TRIAGE ROUGE  —  URGENCE VITALE",
-                "● TRIAGE RED  —  LIFE-THREATENING", L)
-            "JAUNE" -> t("● TRIAGE JAUNE  —  URGENCE STABLE",
-                "● TRIAGE YELLOW  —  STABLE EMERGENCY", L)
-            "VERT"  -> t("● TRIAGE VERT  —  SURVEILLANCE",
-                "● TRIAGE GREEN  —  MONITORING", L)
-            else    -> t("● TRIAGE INCONNU", "● UNKNOWN TRIAGE", L)
+            "ROUGE" -> t("● TRIAGE ROUGE  —  URGENCE VITALE",   "● TRIAGE RED  —  LIFE-THREATENING", L)
+            "JAUNE" -> t("● TRIAGE JAUNE  —  URGENCE STABLE",   "● TRIAGE YELLOW  —  STABLE EMERGENCY", L)
+            "VERT"  -> t("● TRIAGE VERT  —  SURVEILLANCE",       "● TRIAGE GREEN  —  MONITORING", L)
+            else    -> t("● TRIAGE INCONNU",                     "● UNKNOWN TRIAGE", L)
         }
-        canvas.drawText(triageLabel, ML + 12f, bandeauTop + 15f,
-            paint(11f, C_WHITE, bold = true))
+        canvas.drawText(triageLabel, ML + 12f, bandeauTop + 15f, paint(11f, C_WHITE, bold = true))
 
         val triageSub = when (data.triage.uppercase()) {
             "ROUGE" -> t("Stabilisation immédiate requise · Alerte hôpital",
@@ -240,7 +322,7 @@ object PdfReportEngine {
                 "Stabilization treatment · Re-evaluation within 24h", L)
             "VERT"  -> t("Soins à domicile possibles · Suivi recommandé",
                 "Home care possible · Follow-up recommended", L)
-            else    -> ""
+            else -> ""
         }
         canvas.drawText(triageSub, ML + 12f, bandeauTop + 28f, paint(8.5f, C_WHITE))
         y = bandeauTop + 44f
@@ -285,8 +367,7 @@ object PdfReportEngine {
                 t("Médicament :", "Medication :", L),
                 ML + 4f, y, paint(9f, C_GREY)
             )
-            canvas.drawText(dr.medicineName, ML + 90f, y
-                , paint(12f, C_ACCENT, bold = true))
+            canvas.drawText(dr.medicineName, ML + 90f, y, paint(12f, C_ACCENT, bold = true))
             y += 18f
 
             if (dr.dosePerTake == "INTERDIT" || dr.dosePerTake == "STOP" ||
@@ -300,7 +381,7 @@ object PdfReportEngine {
                 )
                 y += 38f
             } else {
-                val pilW = (COL_W - 24f) / 3f
+                val pilW      = (COL_W - 24f) / 3f
                 val positions = listOf(ML + 4f, ML + 4f + pilW + 8f, ML + 4f + (pilW + 8f) * 2)
                 val pilLabels = listOf(
                     t("Dose", "Dose", L),
@@ -339,14 +420,11 @@ object PdfReportEngine {
             }
 
             if (dr.warningMessage.isNotBlank()) {
-                val warnBg = Paint().apply {
-                    color = Color.rgb(255, 248, 220); isAntiAlias = true
-                }
+                val warnBg = Paint().apply { color = Color.rgb(255, 248, 220); isAntiAlias = true }
                 canvas.drawRoundRect(RectF(ML + 4f, y, MR - 4f, y + 24f), 4f, 4f, warnBg)
                 canvas.drawText(
                     dr.warningMessage.take(120),
-                    ML + 10f, y + 16f,
-                    paint(8.5f, C_ORANGE)
+                    ML + 10f, y + 16f, paint(8.5f, C_ORANGE)
                 )
                 y += 30f
             }
@@ -396,10 +474,8 @@ object PdfReportEngine {
                 isAntiAlias = true
             }
             canvas.drawRoundRect(RectF(ML + 2f, y, MR - 2f, y + 32f), 6f, 6f, intBg)
-            canvas.drawText("$sevLabel", ML + 8f, y + 13f,
-                paint(9f, sevColor, bold = true))
-            canvas.drawText(data.drugInteraction, ML + 8f, y + 26f,
-                paint(9f, sevColor))
+            canvas.drawText("$sevLabel", ML + 8f, y + 13f, paint(9f, sevColor, bold = true))
+            canvas.drawText(data.drugInteraction, ML + 8f, y + 26f, paint(9f, sevColor))
             y += 40f
         } else {
             canvas.drawText(
@@ -420,23 +496,39 @@ object PdfReportEngine {
             )
             y += 13f
 
-            val fonBg = Paint().apply { color = Color.rgb(240, 248, 255); isAntiAlias = true }
+            // ── FIX P2 : mesurer SANS dessiner (dryRun = true), puis fond, puis texte ──
+            val fonTextPaint = paint(10f, C_BLUE).apply {
+                typeface = Typeface.create(Typeface.SERIF, Typeface.ITALIC)
+            }
+            val fonBg  = Paint().apply { color = Color.rgb(240, 248, 255); isAntiAlias = true }
             val fonTop = y
-            // Dessiner le fond d'abord
-            val tempY = drawWrapped(canvas, data.conseilFon, ML + 10f, y + 6f,
-                COL_W - 14f,
-                paint(10f, C_DARK).apply {
-                    typeface = Typeface.create(Typeface.SERIF, Typeface.ITALIC)
-                }
+
+            // Étape 1 : mesurer la hauteur sans rien dessiner
+            val tempY = drawWrapped(
+                canvas    = canvas,
+                text      = data.conseilFon,
+                x         = ML + 10f,
+                startY    = fonTop + 6f,
+                maxWidth  = COL_W - 14f,
+                p         = fonTextPaint,
+                dryRun    = true          // ← ne dessine pas
             )
-            canvas.drawRoundRect(RectF(ML + 2f, fonTop, MR - 2f, tempY + 6f),
-                6f, 6f, fonBg)
-            // Redessiner le texte par-dessus le fond
-            y = drawWrapped(canvas, data.conseilFon, ML + 10f, fonTop + 6f,
-                COL_W - 14f,
-                paint(10f, C_BLUE).apply {
-                    typeface = Typeface.create(Typeface.SERIF, Typeface.ITALIC)
-                }
+
+            // Étape 2 : dessiner le fond avec les bonnes dimensions
+            canvas.drawRoundRect(
+                RectF(ML + 2f, fonTop, MR - 2f, tempY + 6f),
+                6f, 6f, fonBg
+            )
+
+            // Étape 3 : dessiner le texte UNE SEULE FOIS par-dessus le fond
+            y = drawWrapped(
+                canvas   = canvas,
+                text     = data.conseilFon,
+                x        = ML + 10f,
+                startY   = fonTop + 6f,
+                maxWidth = COL_W - 14f,
+                p        = fonTextPaint,
+                dryRun   = false         // ← dessine pour de vrai
             )
             y += 10f
         } else {
@@ -457,7 +549,7 @@ object PdfReportEngine {
     // SECTION 6 — PIED DE PAGE
     // ════════════════════════════════════════════════════════════════
     private fun drawFooter(canvas: Canvas, data: ReportData) {
-        val L = data.lang
+        val L       = data.lang
         val footerY = PAGE_H - 90f
 
         canvas.drawLine(ML, footerY, MR, footerY, linePaint(C_LIGHT, 1f))
@@ -483,15 +575,14 @@ object PdfReportEngine {
             t("Signature de l'agent de santé :", "Health worker signature :", L),
             ML, dy, paint(8f, C_DARK)
         )
-        val sigName = if (data.agentName.isBlank())
-            "_______________________" else data.agentName
+        val sigName = if (data.agentName.isBlank()) "_______________________" else data.agentName
         canvas.drawText(sigName, ML + 165f, dy, paint(8f, C_DARK, bold = true))
 
         if (data.agentName.isBlank()) {
             canvas.drawLine(ML + 162f, dy + 2f, ML + 290f, dy + 2f, linePaint(C_GREY, 0.6f))
         }
 
-        val locale = if (L == "fr") Locale.FRANCE else Locale.ENGLISH
+        val locale  = if (L == "fr") Locale.FRANCE else Locale.ENGLISH
         val dateStr = SimpleDateFormat(
             if (L == "fr") "dd/MM/yyyy" else "MM/dd/yyyy", locale
         ).format(Date(data.timestamp))
@@ -512,8 +603,7 @@ object PdfReportEngine {
         canvas.drawRect(ML - 4f, y, MR + 4f, y + 18f, bgP)
         canvas.drawRect(ML - 4f, y, ML + 2f, y + 18f,
             Paint().apply { color = C_ACCENT; isAntiAlias = true })
-        canvas.drawText(title, ML + 6f, y + 13f,
-            paint(9f, C_DARK, bold = true))
+        canvas.drawText(title, ML + 6f, y + 13f, paint(9f, C_DARK, bold = true))
         return y + 24f
     }
 
@@ -525,16 +615,29 @@ object PdfReportEngine {
         canvas.drawRoundRect(RectF(ML, top, MR, bottom), 6f, 6f, strokeP)
     }
 
+    /**
+     * Dessine du texte wrappé ligne à ligne.
+     *
+     * @param dryRun si true, calcule la hauteur finale SANS dessiner quoi que ce soit.
+     *               Utiliser pour mesurer avant de dessiner un fond (fix Bug P2).
+     */
     private fun drawWrapped(
-        canvas: Canvas, text: String,
-        x: Float, startY: Float, maxWidth: Float, p: Paint
+        canvas: Canvas,
+        text: String,
+        x: Float,
+        startY: Float,
+        maxWidth: Float,
+        p: Paint,
+        dryRun: Boolean = false        // ← NOUVEAU paramètre
     ): Float {
-        var y = startY
+        var y      = startY
         var remain = text.replace(Regex("\\*+"), "").trim()
         while (remain.isNotEmpty()) {
             val count = p.breakText(remain, true, maxWidth, null)
             if (count <= 0) break
-            canvas.drawText(remain.substring(0, count), x, y, p)
+            if (!dryRun) {
+                canvas.drawText(remain.substring(0, count), x, y, p)
+            }
             remain = remain.substring(count).trimStart()
             y += (p.textSize * 1.45f)
         }
@@ -554,11 +657,11 @@ object PdfReportEngine {
         bold: Boolean = false,
         align: Paint.Align = Paint.Align.LEFT
     ) = Paint().apply {
-        this.textSize  = size
-        this.color     = color
-        this.typeface  = if (bold) Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        this.textSize   = size
+        this.color      = color
+        this.typeface   = if (bold) Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         else Typeface.DEFAULT
-        this.textAlign = align
+        this.textAlign  = align
         this.isAntiAlias = true
     }
 

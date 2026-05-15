@@ -146,7 +146,7 @@ object SmsTransferHelper {
         try {
             // Nettoyage du numéro : supprimer espaces et tirets
             val cleanPhone = phoneNumber.replace(Regex("[\\s\\-()]"), "")
-            val encoded = URLEncoder.encode(message, "UTF-8")
+            val encoded = Uri.encode(message)
             val url = "https://api.whatsapp.com/send?phone=$cleanPhone&text=$encoded"
 
             val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -210,7 +210,8 @@ object SmsTransferHelper {
         dosageResult: DosageResult?,
         dosageParams: DosageParams?,
         messageText: String,
-        triageLevel: TriageLevel
+        triageLevel: TriageLevel,
+        isFr : Boolean,
     ): String {
         return buildString {
             val drug = dosageResult?.medicineName ?: dosageParams?.medicineName ?: ""
@@ -225,9 +226,9 @@ object SmsTransferHelper {
                 append(found.replaceFirstChar { it.uppercase() })
             }
             val triageStr = when (triageLevel) {
-                TriageLevel.ROUGE -> "Urgence vitale"
-                TriageLevel.JAUNE -> "Consultation 24h"
-                TriageLevel.VERT  -> "Surveillance domicile"
+                TriageLevel.ROUGE -> if (isFr) "Urgence vitale" else "Critical emergency"
+                TriageLevel.JAUNE -> if (isFr) "Consultation 24h" else "24h consultation"
+                TriageLevel.VERT  -> if (isFr) "Surveillance domicile" else "Home monitoring"
                 else -> ""
             }
             if (triageStr.isNotBlank()) {
@@ -333,6 +334,7 @@ private fun TransferConfirmDialog(
                 dosageResult = dosageResult,
                 dosageParams = dosageParams,
                 messageText = message.text,
+                isFr = isFr,
                 triageLevel = message.triageLevel
             )
         )

@@ -54,6 +54,26 @@ object LlamaEngine {
         "/sdcard/Download/$MODEL_FILENAME"
     )
 
+    // ── Remplacement de getAvailableRamMb() ──────────────────────────
+    private fun getAvailableNativeRamMb(): Long {
+        return try {
+            val lines = File("/proc/meminfo").readLines()
+            // MemAvailable = RAM réellement disponible pour les allocs natives (JNI inclus)
+            // C'est exactement ce que llama.cpp va consommer
+            val available = lines
+                .firstOrNull { it.startsWith("MemAvailable") }
+                ?.split(Regex("\\s+"))
+                ?.getOrNull(1)
+                ?.toLongOrNull() ?: 0L
+            available / 1024  // kB → MB
+        } catch (e: Exception) {
+            Log.w(TAG, "Impossible de lire /proc/meminfo : ${e.message}")
+            // Si on ne peut pas lire, on suppose qu'il y a assez de RAM
+            // plutôt que de bloquer le chargement à tort
+            Long.MAX_VALUE
+        }
+    }
+
     // Paramètres du modèle — ajuste selon ta quantization
     private const val N_CTX        = 2048   // Context window
     private const val N_THREADS    = 4      // Threads CPU
@@ -66,15 +86,6 @@ object LlamaEngine {
 
     // Instance du modèle Llama
     private var model: LlamaModel? = null
-
-    // ── Détection RAM disponible ──────────────────────────────────
-    private fun getAvailableRamMb(): Long {
-        val runtime = Runtime.getRuntime()
-        val maxHeap = runtime.maxMemory() / 1024 / 1024
-        val freeHeap = (runtime.maxMemory() - runtime.totalMemory() + runtime.freeMemory()) / 1024 / 1024
-        Log.d(TAG, "RAM — Max heap: ${maxHeap}MB, Free heap: ${freeHeap}MB")
-        return freeHeap
-    }
 
     // ── Trouver le fichier GGUF ───────────────────────────────────
     private fun findModelFile(): File? {
@@ -111,14 +122,15 @@ object LlamaEngine {
             Log.d("MEDVOICE_DEBUG", "Fichier trouvé ! Taille : ${modelFile.length() / 1024 / 1024} Mo")
         }
 
-        // 2. Vérifier la RAM disponible (heuristique)
-        val availRam = getAvailableRamMb()
+        val availRamMb = getAvailableNativeRamMb()
         val modelSizeMb = modelFile.length() / 1024 / 1024
-        Log.d(TAG, "Modèle: ${modelSizeMb}MB — RAM dispo: ${availRam}MB")
+        Log.d(TAG, "RAM native dispo: ${availRamMb}MB — Modèle: ${modelSizeMb}MB")
 
-        if (availRam < modelSizeMb * 0.6) {
-            // Pas assez de RAM — pas la peine d'essayer, OOM garanti
-            Log.w(TAG, "RAM insuffisante : ${availRam}MB dispo pour ${modelSizeMb}MB de modèle")
+        // llama.cpp charge le GGUF + overhead de contexte (~10-15% supplémentaires)
+        // On exige 110% de la taille du fichier en RAM libre
+        val requiredRamMb = (modelSizeMb * 1.1).toLong()
+        if (availRamMb < requiredRamMb) {
+            Log.w(TAG, "RAM insuffisante : ${availRamMb}MB dispo, ${requiredRamMb}MB requis")
             state = LlamaState.Failed(FailReason.OUT_OF_MEMORY)
             return@withContext state
         }

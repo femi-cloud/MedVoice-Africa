@@ -40,7 +40,12 @@ class RagEngine(private val context: Context) {
         fun expandQuery(query: String): String {
             val norm = normalize(query)
             val expanded = StringBuilder(norm)
-            synonyms.forEach { (word, expansion) -> if (norm.contains(word)) expanded.append(" $expansion") }
+            val addedExpansions = mutableSetOf<String>()
+            synonyms.forEach { (word, expansion) ->
+                if (norm.contains(word) && addedExpansions.add(expansion)) {
+                    expanded.append(" $expansion")
+                }
+            }
             return expanded.toString()
         }
 
@@ -78,9 +83,14 @@ class RagEngine(private val context: Context) {
                 "WHO PROTOCOLS (Local knowledge base)"
             val footer = if (lang == "fr") "FIN DES PROTOCOLES" else "END OF PROTOCOLS"
             return buildString {
-                appendLine(header)
-                protocols.forEach { p -> appendLine(); appendLine("--- ${p.title.uppercase()} ---"); appendLine(p.protocol.trim()) }
-                appendLine(footer)
+                append(header)
+                protocols.forEach { p ->
+                    appendLine(); appendLine()
+                    appendLine("--- ${p.title.uppercase()} ---")
+                    append(p.protocol.trim())
+                }
+                appendLine()
+                append(footer)   // pas de \n final
             }
         }
     }

@@ -23,7 +23,7 @@ object ReportDataMapper {
         // 1. Détermination du triage global
         val triage = dosageResult?.warningMessage?.let { 
             if (it.contains("INTERDIT") || it.contains("STOP") || it.contains("ROUGE")) "ROUGE" else null
-        } ?: messages.lastOrNull { !it.isUser }?.triageLevel?.name ?: "VERT"
+        } ?: messages.lastOrNull { !it.isUser }?.triageLevel?.name ?: "UNKNOWN"
 
         // 2. Extraction des symptômes rapportés (généralement le premier message utilisateur)
         val symptoms = messages.firstOrNull { it.isUser }?.text ?: "Non renseigné"
@@ -50,7 +50,11 @@ object ReportDataMapper {
             sessionTitle = sessionTitle,
             dosageResult = dosageResult,
             drugInteraction = dosageResult?.warningMessage?.takeIf { it.contains("Interaction", ignoreCase = true) },
-            interactionSeverity = if (dosageResult?.warningMessage?.contains("STOP") == true) "ROUGE" else "JAUNE",
+            interactionSeverity = when {
+                dosageResult?.warningMessage?.contains("STOP") == true     -> "ROUGE"
+                dosageResult?.warningMessage?.contains("Interaction", ignoreCase = true) == true -> "JAUNE"
+                else -> null   // ← null = pas d'interaction, cohérent avec drugInteraction = null
+            },
             conseilFon = conseilFon,
             agentName = agentName
         )
@@ -58,8 +62,7 @@ object ReportDataMapper {
 
     private fun findConseilFon(context: Context, text: String): String? {
         return try {
-            val jsonString = context.assets.open("fon.json").bufferedReader().use { it.readText() }
-            val array = JSONArray(jsonString)
+            val array = getFonArray(context)
             val lowerText = text.lowercase()
             
             for (i in 0 until array.length()) {
@@ -89,6 +92,15 @@ object ReportDataMapper {
             if (index != -1) {
                 text.substring(index).take(100)
             } else null
+        }
+    }
+
+    private var fonCache: JSONArray? = null
+
+    private fun getFonArray(context: Context): JSONArray {
+        return fonCache ?: run {
+            val json = context.assets.open("fon.json").bufferedReader().use { it.readText() }
+            JSONArray(json).also { fonCache = it }
         }
     }
 }
