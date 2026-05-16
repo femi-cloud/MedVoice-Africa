@@ -162,8 +162,8 @@ For full offline AI capability, download the GGUF model and place it in your dev
 ```
 
 The app detects RAM automatically:
--  **≥ 3 GB RAM free**  → Local GGUF model loads and runs
--  **< 3 GB RAM free** → (e.g. Logicom ONIX 2GB) → Automatic fallback to Gemini API or RAG-only mode
+-  **≥ 8 GB RAM detected**  → Local GGUF model loads and runs
+-  **< 8 GB RAM** → (e.g. Logicom ONIX 2GB) → Automatic fallback to Gemini API or RAG-only mode
 
 ### 4. Build and run
 
