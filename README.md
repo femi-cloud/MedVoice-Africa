@@ -187,7 +187,7 @@ No Android Studio needed — just install the APK directly on your Android devic
 
 For full offline capability without internet, download the GGUF model:
 
-1. Download [`medvoice_q2.gguf`](https://huggingface.co/Fysna/medvoice_final_v2) (~3.4 GB) from HuggingFace
+1. Download [`medvoice_final_v2.gguf`](https://huggingface.co/Fysna/medvoice_final_v2) (~3.4 GB) from HuggingFace
 2. Place it in `/storage/emulated/0/Download/`
 3. Restart the app — it will detect the model automatically
 
