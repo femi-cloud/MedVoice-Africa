@@ -128,10 +128,6 @@ User message
 
 ## 🛠️ Installation & Setup
 
-> Download the GGUF model from HuggingFace: [Fysna/medvoice_final_v2](https://huggingface.co/Fysna/medvoice_final_v2)
-> File: `medvoice_final_v2.gguf` (~3.4 GB)
-> Place it in `/storage/emulated/0/Download/`
-
 ### Prerequisites
 
 - Android Studio Hedgehog or later
@@ -174,6 +170,28 @@ The app detects RAM automatically:
 Or open the project in Android Studio and press **Run**.
 
 ---
+## 📲 Quick Install (Recommended)
+
+No Android Studio needed — just install the APK directly on your Android device.
+
+1. Download the latest APK from the [Releases page](https://github.com/femi-cloud/MedVoice-Africa/releases)
+2. On your Android device, enable **"Install from unknown sources"**:
+   - Settings → Security → Unknown Sources → ✅
+   - *(or Settings → Apps → Special app access → Install unknown apps)*
+3. Open the downloaded APK and tap **Install**
+4. Launch **MedVoice Africa** 🎉
+
+> ⚠️ Requires Android 8.0+ (API 26)
+
+### (Optional) Enable offline AI model
+
+For full offline capability without internet, download the GGUF model:
+
+1. Download [`medvoice_q2.gguf`](https://huggingface.co/Fysna/medvoice_final_v2) (~3.4 GB) from HuggingFace
+2. Place it in `/storage/emulated/0/Download/`
+3. Restart the app — it will detect the model automatically
+
+> Without the model, the app works perfectly via **Gemini API** (internet required)
 
 ## 🧠 Key Design Decisions
 
