@@ -37,6 +37,9 @@ The result: preventable deaths from treatable conditions like malaria, diarrhea,
 
 ```
 No WiFi. No server. No problem.
+> ⚠️ **Demo note:** The LLM offline module requires 3GB+ free RAM.
+> In this demo build, Gemma 4 via Gemini API is used for natural language generation.
+> All medical logic (triage, dosage, WHO protocols) runs fully offline.
 ```
 
 ### What it does
