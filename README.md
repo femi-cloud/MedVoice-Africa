@@ -232,8 +232,7 @@ app/src/main/
 - [x] Whisper.cpp local STT integration
 - [ ] Piper local TTS (Fon voice)
 - [ ] Skin/eye condition visual analysis (MediaPipe)
-- [ ] Multi-user / CSPS network sync
-
+      
 ---
 
 ## ⚙️ Permissions Required
