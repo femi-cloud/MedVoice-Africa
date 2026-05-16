@@ -6,10 +6,13 @@ package com.example.medvoiceafrica
 // Gestion OOM + fallback automatique vers GemmaEngine/Mode Survie
 // ═══════════════════════════════════════════════════════════════════
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.os.Build
 import android.os.Environment
 import android.util.Log
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.codeshipping.llamakotlin.LlamaModel
@@ -45,13 +48,20 @@ object LlamaEngine {
 
     private const val TAG = "LlamaEngine"
     private const val MODEL_FILENAME = "medvoice_final_v2.gguf"
+    // private const val MODEL_FILENAME = "medvoice_q2.gguf"
     private const val MODEL_PATH_DOWNLOAD = "/storage/emulated/0/Download/$MODEL_FILENAME"
 
+    //private const val MODEL_PATH_DOWNLOAD = "/storage/0000-0000/$MODEL_FILENAME"
+
     // Chemin alternatif si l'user a mis le fichier dans un sous-dossier
+    @SuppressLint("SdCardPath")
     private val FALLBACK_PATHS = listOf(
         "/storage/emulated/0/Download/$MODEL_FILENAME",
         "/storage/emulated/0/Documents/$MODEL_FILENAME",
-        "/sdcard/Download/$MODEL_FILENAME"
+        "/sdcard/Download/$MODEL_FILENAME",
+        "/storage/0/Download/$MODEL_FILENAME",
+        "/storage/0000-0000/$MODEL_FILENAME",
+
     )
 
     // ── Remplacement de getAvailableRamMb() ──────────────────────────
@@ -100,6 +110,7 @@ object LlamaEngine {
     }
 
     // ── Initialisation ────────────────────────────────────────────
+    @RequiresApi(Build.VERSION_CODES.FROYO)
     suspend fun initialize(context: Context): LlamaState = withContext(Dispatchers.IO) {
 
 
@@ -128,12 +139,12 @@ object LlamaEngine {
 
         // llama.cpp charge le GGUF + overhead de contexte (~10-15% supplémentaires)
         // On exige 110% de la taille du fichier en RAM libre
-        val requiredRamMb = (modelSizeMb * 1.1).toLong()
-        if (availRamMb < requiredRamMb) {
-            Log.w(TAG, "RAM insuffisante : ${availRamMb}MB dispo, ${requiredRamMb}MB requis")
-            state = LlamaState.Failed(FailReason.OUT_OF_MEMORY)
-            return@withContext state
-        }
+        //val requiredRamMb = (modelSizeMb * 1.1).toLong()
+        //if (availRamMb < requiredRamMb) {
+        //    Log.w(TAG, "RAM insuffisante : ${availRamMb}MB dispo, ${requiredRamMb}MB requis")
+        //    state = LlamaState.Failed(FailReason.OUT_OF_MEMORY)
+        //    return@withContext state
+        //}
 
         try {
             // Chargement du GGUF avec le bloc de configuration de la librairie
