@@ -12,7 +12,7 @@
 
 > **An offline-first, multimodal AI medical assistant powered by Gemma 4, built to bridge the deadly gap between symptom onset and professional care in rural Africa.**
 
-[Features](#What-it-does) · [Architecture](#%EF%B8%8F-architecture) · [Setup](#%EF%B8%8F-installation--setup) · [Screenshots](#-screenshots) · [Roadmap](#-roadmap)
+[Features](#What-it-does) · [Architecture](#%EF%B8%8F-architecture) · [Setup](#%EF%B8%8F-installation--setup)
 
 </div>
 
@@ -162,8 +162,8 @@ For full offline AI capability, download the GGUF model and place it in your dev
 ```
 
 The app detects RAM automatically:
-- **≥ 4 GB RAM** → Local GGUF model loads and runs
-- **< 4 GB RAM** (e.g. Logicom ONIX 2GB) → Automatic fallback to Gemini API or RAG-only mode
+-  **≥ 3 GB RAM free**  → Local GGUF model loads and runs
+-  **< 3 GB RAM free** → (e.g. Logicom ONIX 2GB) → Automatic fallback to Gemini API or RAG-only mode
 
 ### 4. Build and run
 
