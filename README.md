@@ -12,7 +12,7 @@
 
 > **An offline-first, multimodal AI medical assistant powered by Gemma 4, built to bridge the deadly gap between symptom onset and professional care in rural Africa.**
 
-[Features](#What-it-does) · [Architecture](#%EF%B8%8F-architecture) · [Setup](#%EF%B8%8F-installation--setup) · [Screenshots](#-screenshots) · [Roadmap](#-roadmap)
+[Features](#What-it-does) · [Architecture](#%EF%B8%8F-architecture) · [Setup](#%EF%B8%8F-installation--setup)
 
 </div>
 
@@ -37,6 +37,9 @@ The result: preventable deaths from treatable conditions like malaria, diarrhea,
 
 ```
 No WiFi. No server. No problem.
+> ⚠️ **Demo note:** The LLM offline module requires 3GB+ free RAM.
+> In this demo build, Gemma 4 via Gemini API is used for natural language generation.
+> All medical logic (triage, dosage, WHO protocols) runs fully offline.
 ```
 
 ### What it does
@@ -128,10 +131,6 @@ User message
 
 ## 🛠️ Installation & Setup
 
-> Download the GGUF model from HuggingFace: [Fysna/medvoice_final_v2](https://huggingface.co/Fysna/medvoice_final_v2)
-> File: `medvoice_final_v2.gguf` (~3.4 GB)
-> Place it in `/storage/emulated/0/Download/`
-
 ### Prerequisites
 
 - Android Studio Hedgehog or later
@@ -162,8 +161,8 @@ For full offline AI capability, download the GGUF model and place it in your dev
 ```
 
 The app detects RAM automatically:
-- **≥ 4 GB RAM** → Local GGUF model loads and runs
-- **< 4 GB RAM** (e.g. Logicom ONIX 2GB) → Automatic fallback to Gemini API or RAG-only mode
+-  **≥ 8 GB RAM detected**  → Local GGUF model loads and runs
+-  **< 8 GB RAM** → (e.g. Logicom ONIX 2GB) → Automatic fallback to Gemini API or RAG-only mode
 
 ### 4. Build and run
 
@@ -174,6 +173,28 @@ The app detects RAM automatically:
 Or open the project in Android Studio and press **Run**.
 
 ---
+## 📲 Quick Install (Recommended)
+
+No Android Studio needed — just install the APK directly on your Android device.
+
+1. Download the latest APK from the [Releases page](https://github.com/femi-cloud/MedVoice-Africa/releases)
+2. On your Android device, enable **"Install from unknown sources"**:
+   - Settings → Security → Unknown Sources → ✅
+   - *(or Settings → Apps → Special app access → Install unknown apps)*
+3. Open the downloaded APK and tap **Install**
+4. Launch **MedVoice Africa** 🎉
+
+> ⚠️ Requires Android 8.0+ (API 26)
+
+### (Optional) Enable offline AI model
+
+For full offline capability without internet, download the GGUF model:
+
+1. Download [`medvoice_final_v2.gguf`](https://huggingface.co/Fysna/medvoice_final_v2) (~3.4 GB) from HuggingFace
+2. Place it in `/storage/emulated/0/Download/`
+3. Restart the app — it will detect the model automatically
+
+> Without the model, the app works perfectly via **Gemini API** (internet required)
 
 ## 🧠 Key Design Decisions
 
@@ -232,8 +253,7 @@ app/src/main/
 - [x] Whisper.cpp local STT integration
 - [ ] Piper local TTS (Fon voice)
 - [ ] Skin/eye condition visual analysis (MediaPipe)
-- [ ] Multi-user / CSPS network sync
-
+      
 ---
 
 ## ⚙️ Permissions Required
