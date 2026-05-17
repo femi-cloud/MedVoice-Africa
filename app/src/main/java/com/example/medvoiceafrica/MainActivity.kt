@@ -2307,7 +2307,9 @@ private fun doSend(
     )
     val isInteractionQuestion = interactionKeywords.any { text.lowercase().contains(it) }
 
-    if (!isInteractionQuestion && DosageFunctionCalling.detectDosageIntent(text)) {
+    if (!isInteractionQuestion &&
+        DosageFunctionCalling.detectDosageIntent(text) &&
+        DosageFunctionCalling.extractDosageParams(text)?.medicineName?.isNotBlank() == true) {
         val dosageParams = DosageFunctionCalling.extractDosageParams(text)
         if (dosageParams != null && dosageParams.medicineName.isNotBlank()) {
 

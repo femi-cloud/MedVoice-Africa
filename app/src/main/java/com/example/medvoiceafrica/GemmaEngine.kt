@@ -359,8 +359,7 @@ class GemmaEngine(private val context: Context) {
                 val lowerQuery = userMessage.lowercase()
                 val omsResult = db.omsProtocolDao().searchProtocols("%$lowerQuery%")
 
-
-                    if (omsResult.isNotEmpty()) {
+                if (omsResult.isNotEmpty()) {
                         val first = omsResult.first()
                         val inferredTriage = when {
                             first.protocol.contains("urgence", ignoreCase = true) ||

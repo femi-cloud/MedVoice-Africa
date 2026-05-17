@@ -47,16 +47,16 @@ object FonEmergencyData {
             triageLevel = TriageLevel.ROUGE
         ),
         FonPhrase(
-            keywordsFon = listOf("jɔmji", "jmji", "convulsion"),
+            keywordsFon = listOf("jɔmji", "jmji", "xúxú", "é ɖò kpɛvi jɛ wɛ"),
             keywordsFr  = listOf("convulsion", "crise", "tremble", "secousse"),
-            responseFon = "Enyi é ɖó jɛ jɛmɛji (convulsions) ɔ, cyɔn alɔ ta tɔn jí. Yi dotooxwe.",
+            responseFon = "Enyi é ɖó kpɛvi jɛ wɛ (convulsions) ɔ, cyɔn alɔ ta tɔn jí. Yi dotooxwe.",
             responseFr  = "S'il fait des convulsions, protégez sa tête. Allez à l'hôpital.",
             triageLevel = TriageLevel.ROUGE
         ),
         FonPhrase(
-            keywordsFon = listOf("ambulance", "mɔ̀tɔ", "yla"),
+            keywordsFon = listOf("ambilánsi", "mɔ̀tɔ", "yla"),
             keywordsFr  = listOf("ambulance", "voiture", "transport"),
-            responseFon = "Ylɔ ambulance alǒ ba mɔ̌to dìn.",
+            responseFon = "Ylɔ ambilánsi(ambulance) alǒ ba mɔ̌to dìn.",
             responseFr  = "Appelez l'ambulance ou trouvez une voiture maintenant.",
             triageLevel = TriageLevel.ROUGE
         ),
@@ -78,6 +78,7 @@ object FonEmergencyData {
 
     fun detect(userMessage: String): FonPhrase? {
         val msg = userMessage.lowercase().trim()
+        if (!isFonMessage(msg)) return null
         return phrases.firstOrNull { phrase ->
             phrase.keywordsFon.any { msg.contains(it.lowercase()) }
         }

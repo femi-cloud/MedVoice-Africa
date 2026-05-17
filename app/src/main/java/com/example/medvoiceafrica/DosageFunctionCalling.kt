@@ -150,6 +150,10 @@ object DosageFunctionCalling {
 
     fun detectDosageIntent(userMessage: String): Boolean {
         val msg = userMessage.lowercase()
+        val hasDrugName = DOSAGE_PROTOCOLS.keys.any { msg.contains(it) } ||
+                MedProtocols.protocols.keys.any { msg.contains(it) }
+        if (!hasDrugName) return false
+
         val dosageKeywords = listOf(
             // Français & Anglais
             "dose", "dosage", "combien", "comprimé", "comprime",
